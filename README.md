@@ -1,0 +1,105 @@
+# tradeHelper
+
+Outil d'aide au trading orienté **swing / day trading**, basé sur des **données ouvertes**
+(gratuites, sans clé API) et combinant **analyse technique** et **analyse fondamentale**.
+
+## Fonctionnalités
+
+- **Données ouvertes** : actions/ETF via Yahoo Finance, cryptos via l'API publique Binance,
+  forex via les taux quotidiens de la BCE (frankfurter.dev). Cache CSV local
+  (`~/.cache/tradehelper`) pour limiter les appels réseau et travailler hors-ligne.
+- **Analyse technique** : SMA/EMA, RSI (Wilder), MACD, bandes de Bollinger, ATR, ADX,
+  canal de Donchian, OBV, VWAP, volatilité rolling.
+- **Backtesting** : moteur sans lookahead (signal de la barre *i* exécuté à l'open de *i+1*),
+  commissions, slippage, stop-loss / take-profit en intrabarre, sizing « all-in » ou
+  proportionnel au risque (ATR). Métriques : rendement, CAGR, Sharpe, Sortino, drawdown max,
+  Calmar, win rate, profit factor, expectancy, exposition.
+- **Stratégies prêtes à l'emploi** :
+  - `ma_cross` — croisement d'EMA (swing), filtre de tendance optionnel, stop ATR
+  - `rsi_reversion` — mean-reversion sur RSI (day/swing)
+  - `donchian_breakout` — breakout sur canal de Donchian + confirmation de volume (swing)
+  - `macd_momentum` — momentum MACD (day/swing)
+- **Conseils** : score combiné technique (65 %) + fondamental (35 % pour les actions :
+  PER vs secteur, PEG, marges, croissance, dette, avis analystes, objectif de cours),
+  traduit en avis lisible (Achat fort → Vente) avec raisons, niveau de risque,
+  stop suggéré (2×ATR) et horizon conseillé.
+- **Sélection d'actif** : liste déroulante d'actifs connus par source (43 actions US/Europe,
+  14 paires crypto, 12 paires forex — voir `tradehelper/data/universe.py`), **saisie libre
+  possible** pour n'importe quel symbole. Changer de source met à jour la liste, l'actif
+  par défaut et les intervalles disponibles.
+- **Un seul instrument pour toute l'app** : la barre du haut (source / actif / période /
+  intervalle) est **commune aux 3 onglets** — le backtest porte toujours sur l'actif
+  sélectionné, quel que soit l'onglet d'où il est lancé.
+- **Interface graphique** (Tkinter + matplotlib) avec 3 onglets :
+  1. **Analyse & conseils** — graphique en chandeliers avec moyennes mobiles, Bollinger,
+     RSI, MACD, volume, marqueurs d'achat/vente de la stratégie choisie + panneau d'avis.
+  2. **Backtest** — choix de la stratégie et de ses paramètres, capital, commission,
+     slippage, sizing ; affiche la courbe d'equity, le drawdown, les métriques et la
+     liste des trades.
+  3. **Screener multi-stratégies** — pour chaque symbole de la liste, **toutes les
+     stratégies sont backtestées** ; la meilleure est retenue (Sharpe, repli sur le
+     rendement si moins de 2 trades) et une **recommandation** est produite : position
+     (ACHAT / ATTENTE / SHORT selon le dernier signal), horizon (durée moyenne des
+     trades, ex. « ≈ 14 j »), prix d'entrée, stop-loss (2×ATR) et objectif (R:R 2,5).
+     **Double-clic** sur une ligne : l'actif ET la stratégie recommandée sont chargés
+     dans le contexte global, l'onglet Analyse s'ouvre et s'analyse.
+
+## Installation
+
+```bash
+pip install --user -r requirements.txt   # pandas, numpy, matplotlib, yfinance, requests, pillow
+```
+
+## Lancement
+
+```bash
+python3 run.py
+```
+
+## Utilisation en ligne de commande (exemple)
+
+```python
+from tradehelper.data import load_data
+from tradehelper.indicators import add_all
+from tradehelper.strategies import get_strategy
+from tradehelper.backtest import run_backtest, periods_per_year
+from tradehelper.advice import advise
+
+df = add_all(load_data("stock", "AAPL", period="1y", interval="1d"))
+print(advise(df, "AAPL", source="stock")["label"])
+
+sig = get_strategy("ma_cross", fast=12, slow=26).generate(df)
+res = run_backtest(df, sig, initial_capital=10_000, commission=0.001, slippage=0.0005,
+                   periods_per_year=periods_per_year("1d", "stock"))
+print(res.metrics)
+```
+
+## Tests
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+## Structure
+
+```
+tradeHelper/
+├── run.py                  # point d'entrée de la GUI
+├── requirements.txt
+├── tradehelper/
+│   ├── data/sources.py     # Yahoo, Binance, BCE + cache CSV
+│   ├── indicators.py       # indicateurs techniques
+│   ├── strategies/         # 4 stratégies + registre
+│   ├── backtest/           # moteur + métriques
+│   ├── analysis/           # score technique + fondamental
+│   ├── advice.py           # avis combiné
+│   ├── screener.py         # screener multi-stratégies + recommandation (position/horizon/niveaux)
+│   └── gui/                # Tkinter : analyse / backtest / screener + graphiques
+└── tests/                  # tests unitaires (données synthétiques)
+```
+
+## Avertissement
+
+Cet outil est fourni à titre **éducatif et d'aide à la décision** uniquement. Il ne constitue
+pas un conseil en investissement. Les backtests passés ne préjugent pas des performances
+futures ; le trading comporte un risque de perte en capital.
