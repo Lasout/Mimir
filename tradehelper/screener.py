@@ -13,6 +13,7 @@ import pandas as pd
 from .advice import advise
 from .backtest import periods_per_year, run_backtest
 from .data.sources import load_data
+from .fees import get_fee_model
 from .indicators import add_all
 from .strategies import get_strategy, list_strategies
 
@@ -71,11 +72,16 @@ def _pick_best(results: list[tuple]) -> tuple:
 
 
 def screen_assets(source: str, symbols: list[str], period: str = "1y", interval: str = "1d",
-                  capital: float = 10_000.0, commission: float = 0.001, slippage: float = 0.0005,
+                  capital: float = 10_000.0, fee=None, slippage: float = 0.0005,
                   strategies: list[str] | None = None, on_progress=None) -> list[dict]:
-    """Analyse chaque symbole avec toutes les stratégies. Retourne une liste de dicts."""
+    """Analyse chaque symbole avec toutes les stratégies. Retourne une liste de dicts.
+
+    `fee` : modèle de frais (défaut : Trade Republic FR auto selon la source).
+    """
     keys = strategies or [s["key"] for s in list_strategies()]
     ppy = periods_per_year(interval, source)
+    if fee is None:
+        fee = get_fee_model("trade_republic_fr_auto", source)
     rows: list[dict] = []
     for i, sym in enumerate(symbols):
         if on_progress is not None:
@@ -87,7 +93,7 @@ def screen_assets(source: str, symbols: list[str], period: str = "1y", interval:
             for key in keys:
                 strat = get_strategy(key)
                 sig = strat.generate(df)
-                res = run_backtest(df, sig, initial_capital=capital, commission=commission,
+                res = run_backtest(df, sig, initial_capital=capital, fee=fee,
                                    slippage=slippage, periods_per_year=ppy)
                 results.append((key, strat.label, res, sig))
             bkey, blabel, bres, bsig = _pick_best(results)

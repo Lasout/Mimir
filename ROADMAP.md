@@ -34,16 +34,22 @@ Contexte projet pour agents : voir [`AGENTS.md`](AGENTS.md).
 
 ## P2 — backtest & stratégies (niveau pro)
 
-- [ ] **Walk-forward analysis** (fenêtres rolling train/test) + rapport d'overfitting
-- [ ] Optimisation de paramètres (grid/random search) avec pénalité de complexité
-- [ ] Monte Carlo (permutation des trades / bootstrap des rendements)
-- [ ] Backtest multi-actifs / portefeuille (corrélation, exposition nette, drawdown global)
-- [ ] Frais réalistes : funding crypto, borrow pour le short, slippage dépendant du volume
-- [ ] Stratégies : support short natif, mean-reversion multi-actifs, détection de régime
-      (tendance/range via ADX + HMM optionnel)
+- [x] **Frais réalistes** : `fees.py` — `FeeModel` (fixe + % + min/max **par exécution**),
+      préréglages dont **Trade Republic FR par défaut** (1 €/ordre actions/ETF,
+      1 % min 1 € max 50 € crypto) ; sélecteur dans l'onglet Backtest et Portefeuille
+- [x] **Walk-forward** (`backtest/walkforward.py`) : blocs rolling/ancrés, grid search sur
+      le train, equity OOS chaînée, rapport OOS vs in-sample (mesure d'overfitting)
+- [x] **Grid search** (`backtest/optimize.py`) avec garde-fou anti-overfitting :
+      score = Sharpe − pénalité d'instabilité vs configurations voisines
+- [x] **Monte Carlo** (`backtest/montecarlo.py`) : bootstrap des rendements des trades,
+      proba de profit, percentiles de valeur finale et de drawdown
+- [x] **Portefeuille multi-actifs** (`backtest/portfolio.py` + onglet GUI) : parts égales
+      entre actifs en position, frais par exécution, matrice de corrélation
+- [x] **Risk management moteur** : vol targeting (réduit la taille si vol > cible),
+      stop de drawdown global avec hystérésis, **funding par barre** (perps crypto)
+- [ ] Stratégies : mean-reversion multi-actifs, détection de régime (ADX + HMM optionnel)
 - [ ] Signaux ML : features techniques + `scikit-learn`, validation croisée temporelle
-- [ ] Risk management avancé : vol targeting, sizing de Kelly fractionnaire, stop de
-      drawdown global, limites de corrélation
+- [ ] Sizing de Kelly fractionnaire, limites de corrélation du portefeuille
 
 ## P3 — alertes, paper trading, exécution
 

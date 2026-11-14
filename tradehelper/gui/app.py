@@ -16,9 +16,11 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from matplotlib.figure import Figure
 
 from ..advice import advise
-from ..backtest import periods_per_year, run_backtest
+from ..backtest import (grid_search, monte_carlo_trades, periods_per_year, run_backtest,
+                        run_portfolio, walk_forward)
 from ..data.sources import SOURCE_LABELS, DataError, data_range, load_data
 from ..data.universe import universe_for
+from ..fees import get_fee_model, list_presets
 from ..indicators import add_all
 from ..screener import screen_assets
 from ..strategies import get_strategy, list_strategies
@@ -55,13 +57,16 @@ class TradeHelperApp:
         self.tab_analyse = ttk.Frame(self.notebook)
         self.tab_backtest = ttk.Frame(self.notebook)
         self.tab_screener = ttk.Frame(self.notebook)
+        self.tab_portfolio = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_analyse, text="Analyse & conseils")
         self.notebook.add(self.tab_backtest, text="Backtest")
         self.notebook.add(self.tab_screener, text="Screener multi-stratégies")
+        self.notebook.add(self.tab_portfolio, text="Portefeuille multi-actifs")
 
         self._build_analyse_tab()
         self._build_backtest_tab()
         self._build_screener_tab()
+        self._build_portfolio_tab()
 
         self.status = tk.StringVar(value="Prêt. Données ouvertes : Yahoo Finance, Binance, BCE.")
         ttk.Label(root, textvariable=self.status, relief="sunken", anchor="w").pack(
@@ -267,28 +272,53 @@ class TradeHelperApp:
         self.bt_capital = ttk.Entry(mid, width=10)
         self.bt_capital.insert(0, "10000")
         self.bt_capital.grid(row=2, column=1, sticky="w")
-        ttk.Label(mid, text="Commission (%) :").grid(row=2, column=2, sticky="w", padx=4)
-        self.bt_commission = ttk.Entry(mid, width=7)
-        self.bt_commission.insert(0, "0.10")
-        self.bt_commission.grid(row=2, column=3, sticky="w")
-        ttk.Label(mid, text="Slippage (%) :").grid(row=2, column=4, sticky="w", padx=4)
+        ttk.Label(mid, text="Slippage (%) :").grid(row=2, column=2, sticky="w", padx=4)
         self.bt_slippage = ttk.Entry(mid, width=7)
         self.bt_slippage.insert(0, "0.05")
-        self.bt_slippage.grid(row=2, column=5, sticky="w")
-        ttk.Label(mid, text="Sizing :").grid(row=3, column=0, sticky="w", padx=4, pady=4)
+        self.bt_slippage.grid(row=2, column=3, sticky="w")
+        ttk.Label(mid, text="Sizing :").grid(row=2, column=4, sticky="w", padx=4)
         self.bt_sizing = ttk.Combobox(mid, values=["all_in", "risk"], state="readonly", width=10)
         self.bt_sizing.set("all_in")
-        self.bt_sizing.grid(row=3, column=1, sticky="w")
-        ttk.Label(mid, text="Risque/trade (%) :").grid(row=3, column=2, sticky="w", padx=4)
+        self.bt_sizing.grid(row=2, column=5, sticky="w")
+        ttk.Label(mid, text="Risque/trade (%) :").grid(row=3, column=0, sticky="w", padx=4, pady=4)
         self.bt_risk = ttk.Entry(mid, width=7)
         self.bt_risk.insert(0, "1.0")
-        self.bt_risk.grid(row=3, column=3, sticky="w")
+        self.bt_risk.grid(row=3, column=1, sticky="w")
         self.bt_short = tk.BooleanVar(value=False)
         ttk.Checkbutton(mid, text="Autoriser le short", variable=self.bt_short).grid(
-            row=3, column=4, sticky="w", padx=8)
-        self.btn_bt = ttk.Button(mid, text="Lancer le backtest sur l'actif sélectionné",
-                                 command=self.on_backtest)
-        self.btn_bt.grid(row=3, column=5, padx=8)
+            row=3, column=2, sticky="w", padx=8)
+
+        ttk.Label(mid, text="Frais (préréglage) :").grid(row=4, column=0, sticky="w", padx=4, pady=4)
+        self.bt_fee = ttk.Combobox(mid, values=list_presets(), state="readonly", width=26)
+        self.bt_fee.set("trade_republic_fr_auto")  # défaut : Trade Republic FR
+        self.bt_fee.grid(row=4, column=1, columnspan=2, sticky="w")
+        ttk.Label(mid, text="Frais fixe €/ordre (custom) :").grid(row=4, column=3, sticky="w", padx=4)
+        self.bt_fee_flat = ttk.Entry(mid, width=7)
+        self.bt_fee_flat.insert(0, "0")
+        self.bt_fee_flat.grid(row=4, column=4, sticky="w")
+        ttk.Label(mid, text="Frais % (custom) :").grid(row=4, column=5, sticky="w", padx=4)
+        self.bt_fee_pct = ttk.Entry(mid, width=7)
+        self.bt_fee_pct.insert(0, "0")
+        self.bt_fee_pct.grid(row=4, column=6, sticky="w")
+
+        ttk.Label(mid, text="Vol cible (%) :").grid(row=5, column=0, sticky="w", padx=4, pady=4)
+        self.bt_voltarget = ttk.Entry(mid, width=7)
+        self.bt_voltarget.insert(0, "")
+        self.bt_voltarget.grid(row=5, column=1, sticky="w")
+        ttk.Label(mid, text="Stop drawdown (%) :").grid(row=5, column=2, sticky="w", padx=4)
+        self.bt_ddstop = ttk.Entry(mid, width=7)
+        self.bt_ddstop.insert(0, "")
+        self.bt_ddstop.grid(row=5, column=3, sticky="w")
+        ttk.Label(mid, text="Funding/barre (crypto) :").grid(row=5, column=4, sticky="w", padx=4)
+        self.bt_funding = ttk.Entry(mid, width=9)
+        self.bt_funding.insert(0, "0")
+        self.bt_funding.grid(row=5, column=5, sticky="w")
+
+        self.btn_bt = ttk.Button(mid, text="Backtest simple", command=self.on_backtest)
+        self.btn_bt.grid(row=6, column=0, padx=4, pady=6)
+        ttk.Button(mid, text="Walk-forward", command=self.on_walkforward).grid(row=6, column=1, padx=4)
+        ttk.Button(mid, text="Grid search", command=self.on_gridsearch).grid(row=6, column=2, padx=4)
+        ttk.Button(mid, text="Monte Carlo", command=self.on_montecarlo).grid(row=6, column=3, padx=4)
 
         paned = ttk.PanedWindow(self.tab_backtest, orient="horizontal")
         paned.pack(fill="both", expand=True, padx=6, pady=4)
@@ -337,19 +367,71 @@ class TradeHelperApp:
                 out[k] = default
         return out
 
-    def on_backtest(self):
-        vals = self._ctx_values(self.ctx)  # même actif que l'onglet Analyse
+    # --- helpers backtest -------------------------------------------------
+    def _fee_from_widgets(self, source: str):
+        preset = self.bt_fee.get()
+        if preset == "custom":
+            from ..fees import FeeModel
+            return FeeModel(f"Custom {self.bt_fee_flat.get()}€ + {self.bt_fee_pct.get()}%",
+                            flat=float(self.bt_fee_flat.get() or 0),
+                            pct=float(self.bt_fee_pct.get() or 0) / 100.0)
+        return get_fee_model(preset, source)
+
+    def _bt_common(self):
+        """Snapshot des réglages (thread principal) -> (vals, strat_key, strat_params, bt_opts)."""
+        vals = self._ctx_values(self.ctx)
         strat_key = self.bt_strat_var.get()
-        self._rebuild_params(self._params_parent)  # synchro champs <-> stratégie
+        self._rebuild_params(self._params_parent)
         strat_params = self._strategy_params()
+        fee = self._fee_from_widgets(vals["source"])
         bt_opts = {
             "initial_capital": float(self.bt_capital.get() or 10000),
-            "commission": float(self.bt_commission.get() or 0) / 100.0,
+            "fee": fee,
             "slippage": float(self.bt_slippage.get() or 0) / 100.0,
             "allow_short": bool(self.bt_short.get()),
             "sizing": self.bt_sizing.get(),
             "risk_per_trade": float(self.bt_risk.get() or 1) / 100.0,
+            "funding_per_bar": float(self.bt_funding.get() or 0),
+            "periods_per_year": periods_per_year(vals["interval"], vals["source"]),
         }
+        vt = self.bt_voltarget.get().strip()
+        bt_opts["vol_target"] = float(vt) / 100.0 if vt else None
+        dd = self.bt_ddstop.get().strip()
+        bt_opts["max_drawdown_stop"] = float(dd) / 100.0 if dd else None
+        return vals, strat_key, strat_params, bt_opts
+
+    def _show_bt_result(self, res, strat, vals, title_suffix=""):
+        self.backtest_result = res
+        draw_equity_chart(self.fig_bt, res.equity, res.trades,
+                          title=f"Equity — {strat.label} sur {vals['symbol']} ({vals['interval']}) {title_suffix}")
+        self.canvas_bt.draw_idle()
+        m = res.metrics
+        lines = [
+            f"Actif : {vals['symbol']} ({vals['source']}, {vals['interval']}, {vals['period']})   Stratégie : {strat.label}",
+            f"Frais : {res.params.get('fee', '')}",
+            f"Rendement total : {m['total_return'] * 100:+.2f} %   CAGR : {m['cagr'] * 100:+.2f} %   Frais payés : {m.get('total_fees', 0):.2f}",
+            f"Sharpe : {m['sharpe']:.2f}   Sortino : {m['sortino']:.2f}   Vol. annualisée : {m['ann_vol'] * 100:.1f} %",
+            f"Drawdown max : {m['max_drawdown'] * 100:.2f} %   Calmar : {m['calmar']:.2f}",
+            f"Trades : {m['n_trades']}   Win rate : {m['win_rate'] * 100:.1f} %   Profit factor : {m['profit_factor']:.2f}",
+            f"Expectancy : {m['expectancy']:+.2f}   Trade moyen : {m['avg_trade_ret'] * 100:+.2f} %",
+            f"Meilleur trade : {m['best_trade'] * 100:+.2f} %   Pire : {m['worst_trade'] * 100:+.2f} %",
+            f"Exposition au marché : {m['exposure'] * 100:.1f} %   Durée moy. d'un trade : {m['avg_bars']:.1f} barres",
+        ]
+        self.bt_metrics.config(state="normal")
+        self.bt_metrics.delete("1.0", "end")
+        self.bt_metrics.insert("end", "\n".join(lines))
+        self.bt_metrics.config(state="disabled")
+        for i in self.bt_tree.get_children():
+            self.bt_tree.delete(i)
+        for _, t in res.trades.iterrows():
+            self.bt_tree.insert("", "end", values=(
+                pd.Timestamp(t["entry_time"]).strftime("%Y-%m-%d %H:%M"),
+                pd.Timestamp(t["exit_time"]).strftime("%Y-%m-%d %H:%M"),
+                t["side"], f"{t['pnl']:+.2f}", f"{t['ret'] * 100:+.2f}",
+                int(t["bars"]), str(t["reason"])[:40]))
+
+    def on_backtest(self):
+        vals, strat_key, strat_params, bt_opts = self._bt_common()
         self.btn_bt.config(state="disabled")
         self.status.set(f"Backtest de {strat_key} sur {vals['symbol']}...")
 
@@ -357,9 +439,8 @@ class TradeHelperApp:
             df = self._load_df(vals)
             strat = get_strategy(strat_key, **strat_params)
             signals = strat.generate(df)
-            ppy = periods_per_year(vals["interval"], vals["source"])
-            result = run_backtest(df, signals, periods_per_year=ppy, **bt_opts)
-            return df, signals, result, strat
+            result = run_backtest(df, signals, **bt_opts)
+            return result, strat
 
         def done(result, err):
             self.btn_bt.config(state="normal")
@@ -367,35 +448,209 @@ class TradeHelperApp:
                 self.status.set(f"Erreur : {err}")
                 messagebox.showerror("Erreur de backtest", str(err))
                 return
-            df, signals, res, strat = result
-            self.backtest_result = res
-            draw_equity_chart(self.fig_bt, res.equity, res.trades,
-                              title=f"Equity — {strat.label} sur {vals['symbol']} ({vals['interval']})")
-            self.canvas_bt.draw_idle()
+            res, strat = result
+            self._show_bt_result(res, strat, vals)
             m = res.metrics
+            self.status.set(f"Backtest {vals['symbol']} terminé : {m['n_trades']} trades, rendement {m['total_return'] * 100:+.2f} %, frais {m.get('total_fees', 0):.2f}.")
+
+        self._run_async(work, done)
+
+    def on_walkforward(self):
+        vals, strat_key, strat_params, bt_opts = self._bt_common()
+        self.status.set(f"Walk-forward sur {vals['symbol']}...")
+
+        def work():
+            df = self._load_df(vals)
+            grid = {"fast": [8, 12, 20], "slow": [26, 40, 60]} if strat_key == "ma_cross" else None
+            if grid:
+                for k, v in strat_params.items():
+                    if k not in grid:
+                        grid[k] = [v]
+            res = walk_forward(df, strat_key, params=strat_params, param_grid=grid,
+                               n_splits=5, **{k: v for k, v in bt_opts.items() if k != "periods_per_year"},
+                               periods_per_year=bt_opts["periods_per_year"])
+            return res, df
+
+        def done(result, err):
+            if err is not None:
+                self.status.set(f"Erreur : {err}")
+                messagebox.showerror("Erreur walk-forward", str(err))
+                return
+            res, df = result
+            oos = res["oos_metrics"]
+            ins = res["in_sample_metrics"]
+            lines = [f"WALK-FORWARD — {vals['symbol']} ({len(res['splits'])} blocs OOS)",
+                     f"OOS : rendement {oos.get('total_return', 0) * 100:+.2f} %   Sharpe {oos.get('sharpe', 0):+.2f}   DD max {oos.get('max_drawdown', 0) * 100:.2f} %   trades {oos.get('n_trades', 0)}",
+                     f"In-sample (référence) : rendement {ins['total_return'] * 100:+.2f} %   Sharpe {ins['sharpe']:+.2f}",
+                     "Écart OOS vs in-sample = mesure d'overfitting (plus il est grand, plus la stratégie est fragile).", ""]
+            for s in res["splits"]:
+                p = ", ".join(f"{k}={v}" for k, v in s["params"].items())
+                lines.append(f"  bloc {pd.Timestamp(s['test_start']):%Y-%m-%d} → {pd.Timestamp(s['test_end']):%Y-%m-%d} : "
+                             f"params [{p}]  train_sharpe={s.get('train_sharpe', 0):+.2f}  test_ret={s['test_return'] * 100:+.2f} %  trades={s['test_trades']}")
+            self.bt_metrics.config(state="normal")
+            self.bt_metrics.delete("1.0", "end")
+            self.bt_metrics.insert("end", "\n".join(lines))
+            self.bt_metrics.config(state="disabled")
+            draw_equity_chart(self.fig_bt, res["oos_equity"], None,
+                              title=f"Equity OUT-OF-SAMPLE — {vals['symbol']} (walk-forward)")
+            self.canvas_bt.draw_idle()
+            self.status.set(f"Walk-forward terminé : {len(res['splits'])} blocs, Sharpe OOS {oos.get('sharpe', 0):+.2f} vs in-sample {ins['sharpe']:+.2f}.")
+
+        self._run_async(work, done)
+
+    def on_gridsearch(self):
+        vals, strat_key, strat_params, bt_opts = self._bt_common()
+        self.status.set(f"Grid search sur {vals['symbol']}...")
+        grid = {"fast": [5, 8, 12, 20], "slow": [26, 40, 60], "trend_filter": [True, False]} \
+            if strat_key == "ma_cross" else {"window": [10, 20, 30]} if strat_key == "donchian_breakout" \
+            else {"period": [7, 14, 21], "oversold": [25, 30, 35]} if strat_key == "rsi_reversion" \
+            else {"fast": [8, 12], "slow": [21, 26, 34]}
+
+        def work():
+            df = self._load_df(vals)
+            return grid_search(df, strat_key, grid, fee=bt_opts["fee"],
+                               slippage=bt_opts["slippage"],
+                               periods_per_year=bt_opts["periods_per_year"], top=10)
+
+        def done(result, err):
+            if err is not None:
+                self.status.set(f"Erreur : {err}")
+                messagebox.showerror("Erreur grid search", str(err))
+                return
+            out = result
+            if out.empty:
+                self.status.set("Grid search : aucune configuration valide.")
+                return
+            lines = [f"GRID SEARCH — {vals['symbol']} — top {len(out)} configurations (score = Sharpe pénalisé par l'instabilité vs voisins)", ""]
+            for _, r in out.head(10).iterrows():
+                params = {k: r[k] for k in grid.keys()}
+                lines.append(f"  {params}  → sharpe={r['sharpe']:+.2f} (voisins {r['neighbor_sharpe']:+.2f})  ret={r['total_return'] * 100:+.1f}%  "
+                             f"DD={r['max_drawdown'] * 100:.1f}%  trades={int(r['n_trades'])}  score={r['score']:+.2f}")
+            self.bt_metrics.config(state="normal")
+            self.bt_metrics.delete("1.0", "end")
+            self.bt_metrics.insert("end", "\n".join(lines))
+            self.bt_metrics.config(state="disabled")
+            self.status.set(f"Grid search terminé : {len(out)} configs testées, meilleure : {out.iloc[0][list(grid.keys())].to_dict()}.")
+
+        self._run_async(work, done)
+
+    def on_montecarlo(self):
+        if self.backtest_result is None:
+            messagebox.showinfo("Monte Carlo", "Lancez d'abord un backtest simple.")
+            return
+        res = self.backtest_result
+        self.status.set("Monte Carlo sur les trades...")
+
+        def work():
+            return monte_carlo_trades(res.trades, initial_capital=res.params["initial_capital"],
+                                      n_sims=1000, seed=42)
+
+        def done(mc, err):
+            if err is not None:
+                messagebox.showerror("Erreur Monte Carlo", str(err))
+                return
+            if "error" in mc:
+                self.status.set("Monte Carlo : aucun trade à simuler.")
+                return
             lines = [
-                f"Actif : {vals['symbol']} ({vals['source']}, {vals['interval']}, {vals['period']})   Stratégie : {strat.label}",
-                f"Rendement total : {m['total_return'] * 100:+.2f} %   CAGR : {m['cagr'] * 100:+.2f} %",
-                f"Sharpe : {m['sharpe']:.2f}   Sortino : {m['sortino']:.2f}   Vol. annualisée : {m['ann_vol'] * 100:.1f} %",
-                f"Drawdown max : {m['max_drawdown'] * 100:.2f} %   Calmar : {m['calmar']:.2f}",
-                f"Trades : {m['n_trades']}   Win rate : {m['win_rate'] * 100:.1f} %   Profit factor : {m['profit_factor']:.2f}",
-                f"Expectancy : {m['expectancy']:+.2f}   Trade moyen : {m['avg_trade_ret'] * 100:+.2f} %",
-                f"Meilleur trade : {m['best_trade'] * 100:+.2f} %   Pire : {m['worst_trade'] * 100:+.2f} %",
-                f"Exposition au marché : {m['exposure'] * 100:.1f} %   Durée moy. d'un trade : {m['avg_bars']:.1f} barres",
+                f"MONTE CARLO — {mc['n_sims']} simulations sur {mc['n_trades']} trades (bootstrap des rendements)",
+                f"Probabilité de profit : {mc['prob_profit'] * 100:.1f} %",
+                f"Valeur finale : p5 = {mc['p5_final']:.0f}  médiane = {mc['p50_final']:.0f}  p95 = {mc['p95_final']:.0f}  (capital initial {res.params['initial_capital']:.0f})",
+                f"Drawdown max : p5 = {mc['p5_maxdd'] * 100:.1f} %  p95 = {mc['p95_maxdd'] * 100:.1f} %   pire simu = {mc['worst_final']:.0f}",
             ]
             self.bt_metrics.config(state="normal")
             self.bt_metrics.delete("1.0", "end")
             self.bt_metrics.insert("end", "\n".join(lines))
             self.bt_metrics.config(state="disabled")
-            for i in self.bt_tree.get_children():
-                self.bt_tree.delete(i)
-            for _, t in res.trades.iterrows():
-                self.bt_tree.insert("", "end", values=(
-                    pd.Timestamp(t["entry_time"]).strftime("%Y-%m-%d %H:%M"),
-                    pd.Timestamp(t["exit_time"]).strftime("%Y-%m-%d %H:%M"),
-                    t["side"], f"{t['pnl']:+.2f}", f"{t['ret'] * 100:+.2f}",
-                    int(t["bars"]), str(t["reason"])[:40]))
-            self.status.set(f"Backtest {vals['symbol']} terminé : {m['n_trades']} trades, rendement {m['total_return'] * 100:+.2f} %.")
+            self.status.set(f"Monte Carlo : proba de profit {mc['prob_profit'] * 100:.1f} %, médiane {mc['p50_final']:.0f}.")
+
+        self._run_async(work, done)
+
+    # ------------------------------------------------------------- onglet 4 : portefeuille
+    def _build_portfolio_tab(self):
+        top = ttk.Frame(self.tab_portfolio)
+        top.pack(fill="x", padx=6, pady=4)
+        ttk.Button(top, text="Liste par défaut (source active)",
+                   command=self._fill_pf_symbols).pack(side="left", padx=4)
+        ttk.Label(top, text="Stratégie :").pack(side="left", padx=(12, 2))
+        self.pf_strat = ttk.Combobox(top, values=[s["key"] for s in list_strategies()],
+                                     state="readonly", width=18)
+        self.pf_strat.set("ma_cross")
+        self.pf_strat.pack(side="left")
+        ttk.Label(top, text="Frais :").pack(side="left", padx=(12, 2))
+        self.pf_fee = ttk.Combobox(top, values=list_presets(), state="readonly", width=24)
+        self.pf_fee.set("trade_republic_fr_auto")
+        self.pf_fee.pack(side="left")
+        ttk.Label(top, text="Capital :").pack(side="left", padx=(12, 2))
+        self.pf_capital = ttk.Entry(top, width=8)
+        self.pf_capital.insert(0, "10000")
+        self.pf_capital.pack(side="left")
+        self.btn_pf = ttk.Button(top, text="Backtester le portefeuille", command=self.on_portfolio)
+        self.btn_pf.pack(side="left", padx=12)
+        ttk.Label(self.tab_portfolio, text="Actifs du portefeuille (un par ligne) :").pack(anchor="w", padx=6)
+        self.pf_text = scrolledtext.ScrolledText(self.tab_portfolio, height=4, width=70)
+        self.pf_text.pack(anchor="w", padx=6, pady=2)
+        self._fill_pf_symbols()
+        paned = ttk.PanedWindow(self.tab_portfolio, orient="horizontal")
+        paned.pack(fill="both", expand=True, padx=6, pady=4)
+        left = ttk.Frame(paned)
+        self.fig_pf, self.canvas_pf = self._make_chart(left)
+        paned.add(left, weight=3)
+        right = ttk.Frame(paned, width=440)
+        paned.add(right, weight=1)
+        self.pf_metrics = scrolledtext.ScrolledText(right, wrap="word", width=54, height=30)
+        self.pf_metrics.pack(fill="both", expand=True, padx=6, pady=4)
+
+    def _fill_pf_symbols(self):
+        src = self.ctx["source"].get()
+        self.pf_text.delete("1.0", "end")
+        self.pf_text.insert("1.0", "\n".join(universe_for(src)[:6]))
+
+    def on_portfolio(self):
+        vals = self._ctx_values(self.ctx)
+        symbols = [s.strip().upper() for s in self.pf_text.get("1.0", "end").splitlines() if s.strip()]
+        if not symbols:
+            messagebox.showinfo("Portefeuille", "Entrez au moins un actif.")
+            return
+        strat_key = self.pf_strat.get()
+        fee = get_fee_model(self.pf_fee.get(), vals["source"])
+        capital = float(self.pf_capital.get() or 10000)
+        slippage = float(self.bt_slippage.get() or 0) / 100.0
+        self.btn_pf.config(state="disabled")
+        self.status.set(f"Backtest portefeuille : {len(symbols)} actifs...")
+
+        def work():
+            dfs = {s: self._load_df({**vals, "symbol": s}) for s in symbols}
+            return run_portfolio(dfs, strategy_key=strat_key, initial_capital=capital,
+                                 fee=fee, slippage=slippage,
+                                 periods_per_year=periods_per_year(vals["interval"], vals["source"]))
+
+        def done(result, err):
+            self.btn_pf.config(state="normal")
+            if err is not None:
+                self.status.set(f"Erreur : {err}")
+                messagebox.showerror("Erreur portefeuille", str(err))
+                return
+            res = result
+            draw_equity_chart(self.fig_pf, res.equity, res.trades,
+                              title=f"Equity portefeuille — {len(symbols)} actifs — {strat_key}")
+            self.canvas_pf.draw_idle()
+            m = res.metrics
+            corr_lines = [f"  {a} : " + ", ".join(f"{b}={res.correlation.loc[a, b]:+.2f}"
+                                                  for b in res.correlation.columns)
+                          for a in res.correlation.index]
+            lines = [
+                f"PORTEFEUILLE — {len(symbols)} actifs ({vals['source']}, {vals['interval']}, {vals['period']}) — stratégie {strat_key}",
+                f"Frais : {fee.describe()}",
+                f"Rendement total : {m['total_return'] * 100:+.2f} %   CAGR : {m['cagr'] * 100:+.2f} %   Frais payés : {m.get('total_fees', 0):.2f}",
+                f"Sharpe : {m['sharpe']:.2f}   DD max : {m['max_drawdown'] * 100:.2f} %   Win rate : {m['win_rate'] * 100:.1f} %   Trades : {m['n_trades']}",
+                "", "Corrélation des rendements journaliers :", *corr_lines,
+            ]
+            self.pf_metrics.config(state="normal")
+            self.pf_metrics.delete("1.0", "end")
+            self.pf_metrics.insert("end", "\n".join(lines))
+            self.pf_metrics.config(state="disabled")
+            self.status.set(f"Portefeuille terminé : rendement {m['total_return'] * 100:+.2f} %, Sharpe {m['sharpe']:.2f}.")
 
         self._run_async(work, done)
 

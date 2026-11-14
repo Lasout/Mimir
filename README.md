@@ -23,10 +23,20 @@ Outil d'aide au trading orienté **swing / day trading**, basé sur des **donné
   affichée dans l'avis avec une alerte si < 14 jours.
 - **Analyse technique** : SMA/EMA, RSI (Wilder), MACD, bandes de Bollinger, ATR, ADX,
   canal de Donchian, OBV, VWAP, volatilité rolling.
-- **Backtesting** : moteur sans lookahead (signal de la barre *i* exécuté à l'open de *i+1*),
-  commissions, slippage, stop-loss / take-profit en intrabarre, sizing « all-in » ou
-  proportionnel au risque (ATR). Métriques : rendement, CAGR, Sharpe, Sortino, drawdown max,
-  Calmar, win rate, profit factor, expectancy, exposition.
+- **Backtesting pro** : moteur sans lookahead (signal de la barre *i* exécuté à l'open de
+  *i+1*), slippage, stop-loss / take-profit en intrabarre, sizing « all-in » ou
+  proportionnel au risque (ATR), **vol targeting**, **stop de drawdown global** avec
+  hystérésis, **funding par barre** (perps crypto).
+- **Frais réalistes** : modèles de frais **par exécution** (fixe + % + min/max) avec
+  **Trade Republic France par défaut** (1 €/ordre sur actions/ETF, 1 % min 1 € max 50 €
+  sur crypto), plus Binance spot, « sans frais », etc. — sélectionnable dans l'UI.
+- **Validation** : walk-forward (OOS chaîné + comparaison in-sample = mesure
+  d'overfitting), grid search avec pénalité d'instabilité (score vs voisins),
+  Monte Carlo sur les trades (proba de profit, percentiles de valeur finale/DD).
+- **Portefeuille multi-actifs** : onglet dédié, répartition à parts égales entre les
+  actifs en position, frais réels, matrice de corrélation des rendements.
+  Métriques : rendement, CAGR, Sharpe, Sortino, drawdown max, Calmar, win rate,
+  profit factor, expectancy, exposition, frais totaux.
 - **Stratégies prêtes à l'emploi** :
   - `ma_cross` — croisement d'EMA (swing), filtre de tendance optionnel, stop ATR
   - `rsi_reversion` — mean-reversion sur RSI (day/swing)

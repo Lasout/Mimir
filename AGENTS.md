@@ -34,19 +34,26 @@ tradehelper/
 ├── indicators.py             # SMA/EMA, RSI Wilder, MACD, Bollinger, ATR, ADX, Donchian, OBV, VWAP...
 ├── strategies/               # registre STRATEGIES : ma_cross, rsi_reversion,
 │                             #   donchian_breakout, macd_momentum (stop ATR intégré)
+├── fees.py                   # FeeModel (fixe + % + min/max par exécution) ; préréglages dont
+│                             #   Trade Republic FR par défaut (1 €/ordre actions, 1 % min 1 € crypto)
 ├── backtest/
 │   ├── engine.py             # run_backtest() : pas de lookahead (signal barre i exécuté
-│   │                         #   à l'open de i+1), commission, slippage, stop/TP intrabarre,
-│   │                         #   sizing all_in ou risk (ATR)
-│   └── metrics.py            # CAGR, Sharpe, Sortino, drawdown max, win rate, profit factor...
+│   │                         #   à l'open de i+1), FeeModel, slippage, funding/barre, stop/TP
+│   │                         #   intrabarre, sizing all_in/risk, vol targeting, stop de DD global
+│   ├── metrics.py            # CAGR, Sharpe, Sortino, drawdown max, win rate, profit factor, total_fees
+│   ├── optimize.py           # grid_search (score = Sharpe pénalisé par instabilité vs voisins)
+│   ├── walkforward.py        # walk_forward : OOS chaîné + rapport vs in-sample
+│   ├── montecarlo.py         # bootstrap des rendements des trades (proba de profit, percentiles)
+│   └── portfolio.py          # run_portfolio : multi-actifs, parts égales, corrélation
 ├── analysis/                 # technical.py (score -1..1) + fundamental.py (info yfinance)
 ├── advice.py                 # avis combiné 65 % tech / 35 % fond -> label + raisons + stop + earnings
 ├── screener.py               # screen_assets() : backteste TOUTES les stratégies par actif,
 │                             #   recommande position + horizon + entrée/stop/objectif
 └── gui/
-    ├── app.py                # Tkinter : 1 barre d'instrument GLOBALE (source/actif/période/
-    │                         #   intervalle) partagée par les 3 onglets (Analyse / Backtest /
-    │                         #   Screener) ; Treeviews triables (clic en-tête) ; double-clic
+    ├── app.py                # Tkinter : 1 barre d'instrument GLOBALE partagée par les 4 onglets
+    │                         #   (Analyse / Backtest / Screener / Portefeuille) ; Treeviews triables ;
+    │                         #   Backtest : sélecteur de frais (TR FR défaut), vol target, stop DD,
+    │                         #   boutons Walk-forward / Grid search / Monte Carlo ; double-clic
     │                         #   screener -> charge actif + stratégie recommandée
     └── chart.py              # chandeliers matplotlib + indicateurs + courbe d'equity
 tests/                        # unittest, données synthétiques (tests/helpers.py), aucun réseau
