@@ -104,6 +104,8 @@ def apply_ttk(style, name: str, scale: float = 1.0) -> None:
     style.configure("TMenubutton", background=p["bg"], foreground=p["fg"])
     style.configure("Horizontal.TScrollbar", background=p["heading"], troughcolor=p["bg"])
     style.configure("Vertical.TScrollbar", background=p["heading"], troughcolor=p["bg"])
+    style.configure("Horizontal.TProgressbar", troughcolor=p["bg"], background=p["accent"],
+                    bordercolor=p["border"], lightcolor=p["accent"], darkcolor=p["accent"])
     # widgets tk purs (barre de statut, tooltips)
     style.configure("Status.TLabel", background=p["status_bg"], foreground=p["fg"],
                     font=("TkDefaultFont", fs - 1), relief="sunken")

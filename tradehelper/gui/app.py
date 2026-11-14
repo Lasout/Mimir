@@ -135,7 +135,9 @@ class TradeHelperApp:
         ttk.Label(bottom, textvariable=self.status, style="Status.TLabel", anchor="w").pack(
             side="left", fill="x", expand=True)
         self.backend_var = tk.StringVar(value="")
-        ttk.Label(bottom, textvariable=self.backend_var, style="Status.TLabel").pack(side="right")
+        self.backend_lbl = ttk.Label(bottom, textvariable=self.backend_var, style="Status.TLabel")
+        self.backend_lbl.pack(side="right")
+        self.progress = ttk.Progressbar(bottom, mode="indeterminate", length=180)
         self.ctx["backend"].bind("<<ComboboxSelected>>", lambda _=None: self._update_backend_label())
         self._update_backend_label()
         self.apply_ui_theme()
@@ -161,6 +163,28 @@ class TradeHelperApp:
 
         threading.Thread(target=wrapper, daemon=True).start()
         self.root.after(100, poll)
+
+    # ------------------------------------------------------------- progression
+    def _progress_begin(self, determinate: bool = False, maximum: int = 100):
+        """Affiche la barre de progression de la barre de statut (thread Tk uniquement).
+
+        `determinate=True` : barre graduée (ex. screener, maximum = nb de symboles) ;
+        sinon mode indéterminé animé (backtest, analyse, portefeuille...)."""
+        self.progress.config(mode="determinate" if determinate else "indeterminate",
+                             maximum=maximum, value=0)
+        self.progress.pack(side="right", padx=6, before=self.backend_lbl)
+        if not determinate:
+            self.progress.start(60)
+
+    def _progress_set(self, value: int, maximum: int | None = None):
+        if maximum:
+            self.progress.config(maximum=maximum)
+        self.progress.config(value=value)
+
+    def _progress_end(self):
+        self.progress.stop()
+        self.progress.config(value=0)
+        self.progress.pack_forget()
 
     def _context_frame(self, parent) -> dict:
         frame = parent
@@ -578,6 +602,7 @@ class TradeHelperApp:
         vals = self._ctx_values(self.ctx)
         strat_key = self.strat_var.get()
         self.btn_analyse.config(state="disabled")
+        self._progress_begin()
         self.status.set(f"Chargement de {vals['symbol']}...")
 
         def work():
@@ -587,6 +612,7 @@ class TradeHelperApp:
             return df, signals, advice
 
         def done(result, err):
+            self._progress_end()
             self.btn_analyse.config(state="normal")
             if err is not None:
                 self.status.set(f"Erreur : {err}")
@@ -813,6 +839,7 @@ class TradeHelperApp:
     def on_backtest(self):
         vals, strat_key, strat_params, bt_opts = self._bt_common()
         self.btn_bt.config(state="disabled")
+        self._progress_begin()
         self.status.set(f"Backtest de {strat_key} sur {vals['symbol']}...")
 
         def work():
@@ -823,6 +850,7 @@ class TradeHelperApp:
             return result, strat
 
         def done(result, err):
+            self._progress_end()
             self.btn_bt.config(state="normal")
             if err is not None:
                 self.status.set(f"Erreur : {err}")
@@ -841,6 +869,7 @@ class TradeHelperApp:
 
     def on_walkforward(self):
         vals, strat_key, strat_params, bt_opts = self._bt_common()
+        self._progress_begin()
         self.status.set(f"Walk-forward sur {vals['symbol']}...")
 
         def work():
@@ -856,6 +885,7 @@ class TradeHelperApp:
             return res, df
 
         def done(result, err):
+            self._progress_end()
             if err is not None:
                 self.status.set(f"Erreur : {err}")
                 messagebox.showerror("Erreur walk-forward", str(err))
@@ -884,6 +914,7 @@ class TradeHelperApp:
 
     def on_gridsearch(self):
         vals, strat_key, strat_params, bt_opts = self._bt_common()
+        self._progress_begin()
         self.status.set(f"Grid search sur {vals['symbol']}...")
         grid = {"fast": [5, 8, 12, 20], "slow": [26, 40, 60], "trend_filter": [True, False]} \
             if strat_key == "ma_cross" else {"window": [10, 20, 30]} if strat_key == "donchian_breakout" \
@@ -897,6 +928,7 @@ class TradeHelperApp:
                                periods_per_year=bt_opts["periods_per_year"], top=10)
 
         def done(result, err):
+            self._progress_end()
             if err is not None:
                 self.status.set(f"Erreur : {err}")
                 messagebox.showerror("Erreur grid search", str(err))
@@ -923,6 +955,7 @@ class TradeHelperApp:
             messagebox.showinfo("Monte Carlo", "Lancez d'abord un backtest simple.")
             return
         res = self.backtest_result
+        self._progress_begin()
         self.status.set("Monte Carlo sur les trades...")
 
         def work():
@@ -930,6 +963,7 @@ class TradeHelperApp:
                                       n_sims=1000, seed=42)
 
         def done(mc, err):
+            self._progress_end()
             if err is not None:
                 messagebox.showerror("Erreur Monte Carlo", str(err))
                 return
@@ -1001,6 +1035,7 @@ class TradeHelperApp:
         capital = float(self.pf_capital.get() or 10000)
         slippage = float(self.bt_slippage.get() or 0) / 100.0
         self.btn_pf.config(state="disabled")
+        self._progress_begin()
         self.status.set(f"Backtest portefeuille : {len(symbols)} actifs...")
 
         def work():
@@ -1010,6 +1045,7 @@ class TradeHelperApp:
                                  periods_per_year=periods_per_year(vals["interval"], vals["source"]))
 
         def done(result, err):
+            self._progress_end()
             self.btn_pf.config(state="normal")
             if err is not None:
                 self.status.set(f"Erreur : {err}")
@@ -1103,13 +1139,18 @@ class TradeHelperApp:
             messagebox.showinfo("Screener", "Entrez au moins un symbole.")
             return
         self.btn_scr.config(state="disabled")
+        self._progress_begin(determinate=True, maximum=len(symbols))
         prog_q: queue.Queue = queue.Queue()
         finished = {"done": False}
 
         def poll_progress():
             try:
                 while True:
-                    self.scr_progress.config(text=prog_q.get_nowait())
+                    item = prog_q.get_nowait()
+                    if item[0] == "bar":
+                        self._progress_set(item[1], item[2])
+                    else:
+                        self.scr_progress.config(text=item[1])
             except queue.Empty:
                 pass
             if not finished["done"]:
@@ -1119,11 +1160,15 @@ class TradeHelperApp:
             return screen_assets(
                 vals["source"], symbols, period=vals["period"], interval=vals["interval"],
                 backend=vals.get("backend", "auto"),
-                on_progress=lambda i, n, s: prog_q.put(f"{i + 1}/{n} — {s}"),
+                on_progress=lambda i, n, s: (
+                    prog_q.put(("bar", i + 1, n)),
+                    prog_q.put(("label", f"{i + 1}/{n} — {s}")),
+                ),
             )
 
         def done(result, err):
             finished["done"] = True
+            self._progress_end()
             self.btn_scr.config(state="normal")
             self.scr_progress.config(text="")
             if err is not None:
