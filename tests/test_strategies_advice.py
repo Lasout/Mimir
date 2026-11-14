@@ -10,7 +10,8 @@ from tests.helpers import make_ohlcv, make_trend_reversal
 class TestStrategies(unittest.TestCase):
     def test_registry(self):
         keys = [s["key"] for s in list_strategies()]
-        self.assertEqual(set(keys), {"ma_cross", "rsi_reversion", "donchian_breakout", "macd_momentum"})
+        self.assertEqual(set(keys), {"ma_cross", "rsi_reversion", "donchian_breakout",
+                                     "macd_momentum", "adaptive_regime", "ml_signal"})
 
     def test_signals_shape(self):
         df = make_ohlcv(n=200)

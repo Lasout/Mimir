@@ -71,6 +71,32 @@ def _pick_best(results: list[tuple]) -> tuple:
     return max(pool, key=lambda r: (r[2].metrics["sharpe"], r[2].metrics["total_return"]))
 
 
+def top_pick(rows: list[dict]) -> dict | None:
+    """Conseil du jour : meilleur candidat acheteur parmi les résultats du screener.
+
+    Parmi les lignes sans erreur et en position ACHAT, on classe par
+    0,6 x score d'avis + 0,4 x Sharpe normalisé de la meilleure stratégie.
+    Retourne la ligne choisie (avec une clé "why" explicative), ou None.
+    """
+    cands = [r for r in rows
+             if not r.get("error") and r.get("position") == "ACHAT"
+             and isinstance(r.get("score"), (int, float))]
+    if not cands:
+        return None
+
+    def rank(r):
+        sharpe = r.get("sharpe")
+        sharpe_n = max(-1.0, min(1.0, sharpe / 2.0)) if isinstance(sharpe, (int, float)) else 0.0
+        return 0.6 * r["score"] + 0.4 * sharpe_n
+
+    best = max(cands, key=rank)
+    best = dict(best)
+    best["why"] = (f"Avis {best['label']} (score {best['score']:+.2f}), meilleure stratégie "
+                   f"{best['strategy_label']} (Sharpe {best['sharpe']}, {best['n_trades']} trades, "
+                   f"win rate {best['win_rate'] * 100:.0f} %)")
+    return best
+
+
 def screen_assets(source: str, symbols: list[str], period: str = "1y", interval: str = "1d",
                   capital: float = 10_000.0, fee=None, slippage: float = 0.0005,
                   strategies: list[str] | None = None, on_progress=None) -> list[dict]:

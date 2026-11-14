@@ -4,3 +4,4 @@ matplotlib>=3.7
 yfinance>=0.2.40
 requests>=2.31
 pillow>=10
+scikit-learn>=1.3

@@ -47,9 +47,20 @@ Contexte projet pour agents : voir [`AGENTS.md`](AGENTS.md).
       entre actifs en position, frais par exécution, matrice de corrélation
 - [x] **Risk management moteur** : vol targeting (réduit la taille si vol > cible),
       stop de drawdown global avec hystérésis, **funding par barre** (perps crypto)
-- [ ] Stratégies : mean-reversion multi-actifs, détection de régime (ADX + HMM optionnel)
-- [ ] Signaux ML : features techniques + `scikit-learn`, validation croisée temporelle
-- [ ] Sizing de Kelly fractionnaire, limites de corrélation du portefeuille
+- [x] **Régime adaptatif** (`adaptive_regime`) : ADX > seuil → suivi de tendance (EMA rapide
+      vs lente, state-based) ; sinon mean-reversion RSI
+- [x] **Signal ML** (`ml_signal`) : HistGradientBoosting sklearn sur 9 features techniques
+      **causales**, réentraînement périodique sur fenêtre glissante (pas de lookahead),
+      CV temporelle `TimeSeriesSplit` exposée en diagnostic (`val_accuracy`)
+- [x] **Sizing de Kelly fractionnaire** : `sizing="kelly"` dans le moteur (f = W − (1−W)/R
+      sur les trades passés, × `kelly_fraction`, plafonné à 95 % du capital)
+- [x] **Limite de corrélation du portefeuille** : `max_corr` dans `run_portfolio`
+      (un actif trop corrélé aux positions déjà retenues est écarté)
+- [x] **Conseil « quoi acheter aujourd'hui »** : `top_pick()` sur les résultats du screener
+      (meilleur candidat ACHAT, rang = 0,6 × score d'avis + 0,4 × Sharpe normalisé),
+      affiché dans un bandeau dédié de l'onglet Screener
+- [x] **ETF ajoutés à l'univers** (SPY, QQQ, VOO, VTI, SCHD, JEPI, VWCE.DE, IWDA.AS,
+      EQQQ.PA, CSPX.L, CW8.PA...)
 
 ## P3 — alertes, paper trading, exécution
 

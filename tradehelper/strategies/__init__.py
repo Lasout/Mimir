@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from .adaptive import AdaptiveRegime
 from .base import Strategy
+from .ml import MLSignal
 from .strategies import DonchianBreakout, MACDMomentum, MovingAverageCross, RSIMeanReversion
 
 STRATEGIES: dict[str, type[Strategy]] = {
@@ -10,6 +12,8 @@ STRATEGIES: dict[str, type[Strategy]] = {
     RSIMeanReversion.name: RSIMeanReversion,
     DonchianBreakout.name: DonchianBreakout,
     MACDMomentum.name: MACDMomentum,
+    AdaptiveRegime.name: AdaptiveRegime,
+    MLSignal.name: MLSignal,
 }
 
 

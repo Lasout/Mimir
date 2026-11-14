@@ -39,8 +39,9 @@ def run_backtest(
     fee: FeeModel | None = None,        # modèle de frais par exécution (ex. Trade Republic FR)
     slippage: float = 0.0005,
     allow_short: bool = False,
-    sizing: str = "all_in",             # "all_in" | "risk"
+    sizing: str = "all_in",             # "all_in" | "risk" | "kelly"
     risk_per_trade: float = 0.01,
+    kelly_fraction: float = 0.5,        # fraction de Kelly appliquée (ex. 0.5 = half-Kelly)
     periods_per_year: int = 252,
     funding_per_bar: float = 0.0,       # ex. 0.0001 = 1 pb/bar sur le notionnel (perps crypto)
     vol_target: float | None = None,    # vol annualisée cible (réduit la taille au-delà)
@@ -130,6 +131,16 @@ def run_backtest(
         if sizing == "risk" and not np.isnan(stop_arr[i]):
             risk_per_unit = abs(px_raw - stop_arr[i])
             desired = (equity * risk_per_trade) / risk_per_unit if risk_per_unit > 0 else 0.0
+        elif sizing == "kelly" and len(trades) >= 5:
+            # Kelly fractionnaire : f = W - (1-W)/R sur les trades passés, plafonné
+            rets = [t["ret"] for t in trades]
+            wins = [r for r in rets if r > 0]
+            losses = [-r for r in rets if r <= 0]
+            W = len(wins) / len(rets)
+            R = (np.mean(wins) / np.mean(losses)) if wins and losses else 1.0
+            f = W - (1.0 - W) / R if R > 0 else 0.0
+            f = float(np.clip(f, 0.0, 1.0))
+            desired = equity * min(0.95, f * kelly_fraction) / px_raw
         else:
             desired = equity * 0.95 / px_raw
         if vol_arr is not None and not np.isnan(vol_arr[i]) and vol_arr[i] > 0:
@@ -210,6 +221,7 @@ def run_backtest(
         metrics=metrics,
         params={"initial_capital": initial_capital, "fee": fee.describe(), "slippage": slippage,
                 "allow_short": allow_short, "sizing": sizing, "risk_per_trade": risk_per_trade,
+                "kelly_fraction": kelly_fraction,
                 "funding_per_bar": funding_per_bar, "vol_target": vol_target,
                 "max_drawdown_stop": max_drawdown_stop},
     )

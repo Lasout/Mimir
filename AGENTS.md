@@ -33,7 +33,8 @@ tradehelper/
 │   └── universe.py           # listes d'actifs connus par source (actions/crypto/forex)
 ├── indicators.py             # SMA/EMA, RSI Wilder, MACD, Bollinger, ATR, ADX, Donchian, OBV, VWAP...
 ├── strategies/               # registre STRATEGIES : ma_cross, rsi_reversion,
-│                             #   donchian_breakout, macd_momentum (stop ATR intégré)
+│                             #   donchian_breakout, macd_momentum, adaptive_regime (ADX),
+│                             #   ml_signal (sklearn, features causales, fenêtre glissante)
 ├── fees.py                   # FeeModel (fixe + % + min/max par exécution) ; préréglages dont
 │                             #   Trade Republic FR par défaut (1 €/ordre actions, 1 % min 1 € crypto)
 ├── backtest/
@@ -48,7 +49,8 @@ tradehelper/
 ├── analysis/                 # technical.py (score -1..1) + fundamental.py (info yfinance)
 ├── advice.py                 # avis combiné 65 % tech / 35 % fond -> label + raisons + stop + earnings
 ├── screener.py               # screen_assets() : backteste TOUTES les stratégies par actif,
-│                             #   recommande position + horizon + entrée/stop/objectif
+│                             #   recommande position + horizon + entrée/stop/objectif ;
+│                             #   top_pick() = conseil « quoi acheter aujourd'hui » (bandeau GUI)
 └── gui/
     ├── app.py                # Tkinter : 1 barre d'instrument GLOBALE partagée par les 4 onglets
     │                         #   (Analyse / Backtest / Screener / Portefeuille) ; Treeviews triables ;

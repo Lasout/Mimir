@@ -42,6 +42,14 @@ Outil d'aide au trading orienté **swing / day trading**, basé sur des **donné
   - `rsi_reversion` — mean-reversion sur RSI (day/swing)
   - `donchian_breakout` — breakout sur canal de Donchian + confirmation de volume (swing)
   - `macd_momentum` — momentum MACD (day/swing)
+  - `adaptive_regime` — détection de régime par ADX : tendance (EMA rapide vs lente) ou range (RSI)
+  - `ml_signal` — classifieur sklearn (HistGradientBoosting) sur 9 features techniques causales,
+    réentraînement périodique sur fenêtre glissante, CV temporelle en diagnostic
+- **Sizing avancé** : Kelly fractionnaire (`sizing="kelly"`), risque fixe par trade (ATR).
+- **Univers d'actifs** : actions US/Europe **+ ETF** (SPY, QQQ, VWCE.DE, IWDA.AS, CW8.PA…),
+  crypto, forex — liste déroulante éditable, saisie libre possible.
+- **Conseil du jour** : après un screener, un bandeau indique **quoi acheter aujourd'hui**
+  (meilleur candidat en position ACHAT : actif, entrée, stop, objectif, horizon, stratégie).
 - **Conseils** : score combiné technique (65 %) + fondamental (35 % pour les actions :
   PER vs secteur, PEG, marges, croissance, dette, avis analystes, objectif de cours),
   traduit en avis lisible (Achat fort → Vente) avec raisons, niveau de risque,

@@ -33,7 +33,7 @@ def run_portfolio(dfs: dict[str, pd.DataFrame], strategy_key: str = "ma_cross",
                   params: dict | None = None, initial_capital: float = 10_000.0,
                   fee: FeeModel | None = None, commission: float = 0.001,
                   slippage: float = 0.0005, max_positions: int | None = None,
-                  periods_per_year: int = 252) -> PortfolioResult:
+                  max_corr: float | None = None, periods_per_year: int = 252) -> PortfolioResult:
     from ..fees import FeeModel as _FM
     fee = fee if fee is not None else _FM(name="commission %", pct=commission)
     symbols = list(dfs.keys())
@@ -56,6 +56,8 @@ def run_portfolio(dfs: dict[str, pd.DataFrame], strategy_key: str = "ma_cross",
     open_px = {s: dfs[s].reindex(idx)["Open"].to_numpy() for s in symbols}
     close_px = {s: dfs[s].reindex(idx)["Close"].to_numpy() for s in symbols}
     sig_at = {s: sigs[s].reindex(idx).fillna(0).to_numpy() for s in symbols}
+    # corrélation des rendements (calculée une fois ; simplification documentée dans le docstring)
+    corr = pd.DataFrame({s: pd.Series(close_px[s], index=idx).pct_change() for s in symbols}).corr()
 
     cash = float(initial_capital)
     shares = {s: 0.0 for s in symbols}
@@ -101,6 +103,15 @@ def run_portfolio(dfs: dict[str, pd.DataFrame], strategy_key: str = "ma_cross",
         active = [s for s in symbols if sig_at[s][i] > 0]
         if max_positions and len(active) > max_positions:
             active = active[:max_positions]
+        if max_corr is not None and len(active) > 1:
+            # limite de corrélation : on écarte les actifs trop corrélés aux déjà retenus
+            selected: list[str] = []
+            for s in active:
+                if not selected:
+                    selected.append(s)
+                elif corr.loc[s, selected].mean() <= max_corr:
+                    selected.append(s)
+            active = selected
         w = 1.0 / len(active) if active else 0.0
         for s in symbols:
             pending[s] = w if s in active else 0.0
@@ -133,11 +144,8 @@ def run_portfolio(dfs: dict[str, pd.DataFrame], strategy_key: str = "ma_cross",
     metrics = compute_metrics(equity, trades_df, (positions.sum(axis=1) > 0).astype(int),
                               periods_per_year=periods_per_year)
     metrics["total_fees"] = total_fees
-    # corrélation des rendements journaliers
-    rets = pd.DataFrame({s: pd.Series(close_px[s], index=idx).pct_change() for s in symbols})
-    corr = rets.corr()
     return PortfolioResult(equity=equity, positions=positions, trades=trades_df,
                            metrics=metrics, correlation=corr,
                            params={"strategy": strategy_key, "params": params or {},
                                    "fee": fee.describe(), "initial_capital": initial_capital,
-                                   "max_positions": max_positions})
+                                   "max_positions": max_positions, "max_corr": max_corr})

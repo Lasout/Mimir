@@ -22,7 +22,7 @@ from ..data.sources import SOURCE_LABELS, DataError, data_range, load_data
 from ..data.universe import universe_for
 from ..fees import get_fee_model, list_presets
 from ..indicators import add_all
-from ..screener import screen_assets
+from ..screener import screen_assets, top_pick
 from ..strategies import get_strategy, list_strategies
 from .chart import draw_equity_chart, draw_price_chart
 
@@ -666,6 +666,12 @@ class TradeHelperApp:
                    command=self._open_screener_selection).pack(side="left", padx=4)
         self.scr_progress = ttk.Label(top, text="")
         self.scr_progress.pack(side="left", padx=8)
+        self.advice_frame = ttk.LabelFrame(self.tab_screener,
+                                           text="Conseil du jour — quoi acheter aujourd'hui ?")
+        self.advice_frame.pack(fill="x", padx=6, pady=4)
+        self.scr_advice_var = tk.StringVar(value="Lancez le screener pour obtenir un conseil d'achat.")
+        ttk.Label(self.advice_frame, textvariable=self.scr_advice_var,
+                  wraplength=1150, justify="left").pack(anchor="w", padx=6, pady=4)
         ttk.Label(self.tab_screener,
                   text="Symboles à scanner (un par ligne) — source, période et intervalle repris de la barre du haut :").pack(anchor="w", padx=6)
         self.scr_text = scrolledtext.ScrolledText(self.tab_screener, height=5, width=60)
@@ -738,6 +744,15 @@ class TradeHelperApp:
             n_ok = sum(1 for r in result if not r["error"])
             self.status.set(f"Screener terminé : {n_ok}/{len(result)} actifs analysés "
                             f"({vals['source']}, {vals['interval']}). Double-clic pour ouvrir un actif.")
+            pick = top_pick(result)
+            if pick:
+                self.scr_advice_var.set(
+                    f"À ACHETER aujourd'hui : {pick['symbol']} à ~{pick['entry']} — "
+                    f"stop {pick['stop']}, objectif {pick['target']}, horizon {pick['horizon']}. "
+                    f"{pick['why']}.")
+            else:
+                self.scr_advice_var.set(
+                    "Aucun candidat acheteur pertinent aujourd'hui : rester en liquidités / attendre.")
 
         self.root.after(100, poll_progress)
         self._run_async(work, done)

@@ -63,7 +63,8 @@ class TestScreenAssets(unittest.TestCase):
                         "position", "entry", "stop", "target", "horizon", "n_trades"):
                 self.assertIn(key, r)
             self.assertIn(r["best_strategy"],
-                          {"ma_cross", "rsi_reversion", "donchian_breakout", "macd_momentum"})
+                          {"ma_cross", "rsi_reversion", "donchian_breakout", "macd_momentum",
+                           "adaptive_regime", "ml_signal"})
             self.assertIn(r["position"], {"ACHAT", "ATTENTE", "SHORT"})
             self.assertLess(r["stop"], r["entry"])
             self.assertGreater(r["target"], r["entry"])
