@@ -18,13 +18,19 @@ Contexte projet pour agents : voir [`AGENTS.md`](AGENTS.md).
 
 ## P1 — données : historique plus long et persistant
 
-- [ ] **Historique long** : pagination Binance en boucle (`startTime`/`endTime`, 1000 barres
-      max par appel) pour remonter à plusieurs années ; fallback Stooq/Alpha Vantage
-      (clé gratuite) quand Yahoo rate-limite ; gérer les ajustements (dividendes, splits)
-- [ ] Remplacer le cache CSV par une **base SQLite** (`~/.local/share/tradehelper/`)
-      avec mise à jour incrémentale (dernier timestamp connu) et requêtes par symbole/intervalle
-- [ ] fournisseurs alternatifs configurables (ordre de priorité + fallback automatique)
-- [ ] Calendrier des annonces (earnings, BCE/Fed) — impact sur la volatilité affichée
+- [x] **Historique long** : période `max` ; pagination Binance en boucle (1000 klines/appel,
+      plafond `max_bars_per_fetch`) ; Yahoo `period="max"` pour actions daily/hebdo/mensuel
+- [x] **Base SQLite** à la place du cache CSV : `~/.local/share/tradehelper/market.db`,
+      upsert incrémental (tête sondée 1×/24 h, queue selon TTL), requêtes par symbole/intervalle
+- [x] **Fournisseurs configurables** avec fallback : `config.providers` (défaut
+      stock: yahoo→alphavantage, crypto: binance→yahoo, forex: frankfurter→yahoo) ;
+      Alpha Vantage si `ALPHAVANTAGE_API_KEY` ; config via `TRADEHELPER_CONFIG` (JSON) + env
+- [x] **Calendrier des annonces** : date des résultats (yfinance `calendar`), cachée 24 h
+      dans le store, affichée dans l'avis avec alerte si < 14 j
+- [ ] Ajustement des prix (dividendes/splits) : flag `adjust_prices` dans la config
+      (Yahoo `auto_adjust`), à activer par défaut après vérification de l'impact backtest
+- [ ] Calendrier BCE/Fed (pas de source gratuite fiable identifiée — scraping à étudier)
+- [ ] Stooq : inutilisable (challenge JS anti-bot) — documenté, ne pas réessayer sans navigateur
 
 ## P2 — backtest & stratégies (niveau pro)
 

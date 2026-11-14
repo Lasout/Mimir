@@ -8,9 +8,19 @@ Outil d'aide au trading orienté **swing / day trading**, basé sur des **donné
 
 ## Fonctionnalités
 
-- **Données ouvertes** : actions/ETF via Yahoo Finance, cryptos via l'API publique Binance,
-  forex via les taux quotidiens de la BCE (frankfurter.dev). Cache CSV local
-  (`~/.cache/tradehelper`) pour limiter les appels réseau et travailler hors-ligne.
+- **Données ouvertes** : actions/ETF via Yahoo Finance, cryptos via l'API publique Binance
+  (paginé, historique complet depuis 2017), forex via les taux quotidiens de la BCE
+  (frankfurter.dev), avec **fallback automatique** (Yahoo sert aussi `BTC-USD`, `EURUSD=X` ;
+  Alpha Vantage si `ALPHAVANTAGE_API_KEY` est défini).
+- **Stockage persistant SQLite** (`~/.local/share/tradehelper/market.db`) : mise à jour
+  **incrémentale** (seules les plages manquantes sont téléchargées ; la tête « max » est
+  sondée une fois par 24 h, la queue selon un TTL par intervalle). Période `max` supportée
+  (ex. AAPL depuis 1980, BTCUSDT depuis 2017). Hors-ligne : sert la dernière version en base.
+- **Configuration** : `tradehelper/config.py`, surchargeable par fichier JSON pointé par
+  `TRADEHELPER_CONFIG` et par variables d'environnement (`TRADEHELPER_DB_PATH`,
+  `ALPHAVANTAGE_API_KEY`, `TRADEHELPER_ADJUST_PRICES`).
+- **Calendrier des annonces** : date des prochains résultats (actions), cachée 24 h et
+  affichée dans l'avis avec une alerte si < 14 jours.
 - **Analyse technique** : SMA/EMA, RSI (Wilder), MACD, bandes de Bollinger, ATR, ADX,
   canal de Donchian, OBV, VWAP, volatilité rolling.
 - **Backtesting** : moteur sans lookahead (signal de la barre *i* exécuté à l'open de *i+1*),

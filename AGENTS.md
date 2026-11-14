@@ -19,8 +19,17 @@ repli automatique hors-ligne). Yahoo rate-limite parfois (429) : le cache sert d
 ```
 run.py                        # point d'entrée GUI : python3 run.py
 tradehelper/
+├── config.py                 # configuration (défauts < fichier JSON $TRADEHELPER_CONFIG < env)
+├── timeutil.py               # utcnow_naive() (pandas 3.x)
 ├── data/
-│   ├── sources.py            # load_data(source, symbole, période, intervalle) + cache CSV
+│   ├── store.py              # Store SQLite (~/.local/share/tradehelper/market.db) :
+│   │                         #   table bars + meta, upsert incrémental, thread-safe
+│   ├── providers.py          # chaîne de fournisseurs : Yahoo, Binance (paginé 1000/appel),
+│   │                         #   Frankfurter (forex daily), Alpha Vantage (si clé env)
+│   ├── sources.py            # load_data(...) : sert depuis le store, ne télécharge que les
+│   │                         #   plages manquantes (tête « max » sondée 1x/24h + queue fraîche
+│   │                         #   selon TTL) ; périodes : 1mo..5y + max
+│   ├── events.py             # calendrier des résultats (earnings) via yfinance, caché 24 h
 │   └── universe.py           # listes d'actifs connus par source (actions/crypto/forex)
 ├── indicators.py             # SMA/EMA, RSI Wilder, MACD, Bollinger, ATR, ADX, Donchian, OBV, VWAP...
 ├── strategies/               # registre STRATEGIES : ma_cross, rsi_reversion,
@@ -31,7 +40,7 @@ tradehelper/
 │   │                         #   sizing all_in ou risk (ATR)
 │   └── metrics.py            # CAGR, Sharpe, Sortino, drawdown max, win rate, profit factor...
 ├── analysis/                 # technical.py (score -1..1) + fundamental.py (info yfinance)
-├── advice.py                 # avis combiné 65 % tech / 35 % fond -> label + raisons + stop
+├── advice.py                 # avis combiné 65 % tech / 35 % fond -> label + raisons + stop + earnings
 ├── screener.py               # screen_assets() : backteste TOUTES les stratégies par actif,
 │                             #   recommande position + horizon + entrée/stop/objectif
 └── gui/
@@ -40,7 +49,7 @@ tradehelper/
     │                         #   Screener) ; Treeviews triables (clic en-tête) ; double-clic
     │                         #   screener -> charge actif + stratégie recommandée
     └── chart.py              # chandeliers matplotlib + indicateurs + courbe d'equity
-tests/                        # unittest, données synthétiques (tests/helpers.py), aucune réseau
+tests/                        # unittest, données synthétiques (tests/helpers.py), aucun réseau
 ```
 
 ## Règles de fonctionnement (à respecter impérativement)
@@ -55,8 +64,10 @@ tests/                        # unittest, données synthétiques (tests/helpers.
    (monkeypatcher `load_data` si besoin, avec un seed déterministe — ne PAS utiliser
    `hash()` qui change à chaque process).
 4. UI et messages en **français**. Pas d'emoji dans le code ni les commits.
-5. Ne casse pas le cache : `_normalize()` produit toujours Open/High/Low/Close/Volume,
-   index DatetimeIndex trié naive.
+5. Couche données : `load_data()` lit d'abord le **store SQLite**, ne télécharge que les
+   plages manquantes via la chaîne de fournisseurs (config `providers` par source).
+   `normalize()` produit toujours Open/High/Low/Close/Volume, index DatetimeIndex trié naive.
+   Ne jamais appeler les providers directement hors de `load_data` (sauf tests avec store temporaire).
 6. Avertissement « outil éducatif, pas un conseil en investissement » à maintenir (README).
 
 ## Commandes
@@ -69,10 +80,13 @@ python3 -m unittest discover -s tests -v   # tests (36 tests, hors-ligne)
 
 ## État actuel / limites connues
 
-- Forex uniquement en daily (données BCE) ; fondamental uniquement pour les actions.
-- Historique intraday Yahoo limité (ex. 1m = 7 jours max) ; Binance paginé à 1000 barres/appel.
+- Forex uniquement en daily (données BCE/Frankfurter) ; fondamental + calendrier earnings
+  uniquement pour les actions.
+- Historique long : OK en daily/hebdo/mensuel (Yahoo `max`, ex. AAPL depuis 1980 ; Binance
+  paginé, ex. BTCUSDT depuis 2017). **Intraday long indisponible** : Yahoo limite
+  (1m = 7 j, 5m = 60 j, 1h = 730 j max). Stooq inutilisable (challenge JS anti-bot).
 - Screener : une stratégie "best" choisie par Sharpe (repli rendement si < 2 trades).
-- Pas encore de persistance (watchlist, historique backtests), ni d'alertes, ni de CI.
+- Pas encore d'alertes, ni de CI, ni de watchlist persistante (hors store de prix).
 
 ## Dépôt git
 

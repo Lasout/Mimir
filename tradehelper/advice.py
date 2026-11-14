@@ -41,6 +41,23 @@ def advise(df: pd.DataFrame, symbol: str, source: str = "stock", interval: str =
     if fund["available"]:
         reasons += [f"[Fondamental] {r}" for r in fund["reasons"]]
 
+    # calendrier des annonces (actions uniquement, mis en cache 24 h)
+    earnings_date = None
+    if source == "stock":
+        try:
+            from .data.events import fetch_earnings_date
+            earnings_date = fetch_earnings_date(symbol)
+            if earnings_date is not None:
+                import datetime as dt
+                days = (earnings_date - dt.date.today()).days
+                if 0 <= days <= 14:
+                    reasons.append(f"[Calendrier] Publication des résultats le {earnings_date:%d/%m/%Y} "
+                                   f"(dans {days} j) : volatilité attendue, prudence sur la taille de position.")
+                else:
+                    reasons.append(f"[Calendrier] Prochaine publication des résultats le {earnings_date:%d/%m/%Y}.")
+        except Exception:
+            earnings_date = None
+
     atr_pct = tech["atr_pct"]
     stop_suggestion = None
     if atr_pct > 0:
@@ -71,6 +88,7 @@ def advise(df: pd.DataFrame, symbol: str, source: str = "stock", interval: str =
         "stop_suggestion": round(stop_suggestion, 2) if stop_suggestion else None,
         "risk": risk,
         "horizon": horizon,
+        "earnings_date": earnings_date.isoformat() if earnings_date else None,
         "fundamental_available": fund["available"],
         "fundamental_data": fund.get("data", {}),
     }

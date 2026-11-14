@@ -17,14 +17,14 @@ from matplotlib.figure import Figure
 
 from ..advice import advise
 from ..backtest import periods_per_year, run_backtest
-from ..data.sources import SOURCE_LABELS, DataError, load_data
+from ..data.sources import SOURCE_LABELS, DataError, data_range, load_data
 from ..data.universe import universe_for
 from ..indicators import add_all
 from ..screener import screen_assets
 from ..strategies import get_strategy, list_strategies
 from .chart import draw_equity_chart, draw_price_chart
 
-PERIODS = ["1mo", "3mo", "6mo", "1y", "2y", "5y"]
+PERIODS = ["1mo", "3mo", "6mo", "1y", "2y", "5y", "max"]
 INTERVALS = {
     "stock": ["1d", "1h", "4h", "30m", "15m", "5m", "1wk", "1mo"],
     "crypto": ["1d", "4h", "1h", "30m", "15m", "5m"],
@@ -214,7 +214,13 @@ class TradeHelperApp:
                              title=f"{vals['symbol']} — {vals['interval']} — stratégie {strat_key}")
             self.canvas_a.draw_idle()
             self._fill_advice()
-            self.status.set(f"{vals['symbol']} : {len(self.df)} barres. Avis : {self.adv['label']} (score {self.adv['score']:+.2f}).")
+            try:
+                first, last, n_db = data_range(vals["source"], vals["symbol"], vals["interval"])
+                plage = f" | base: {n_db} barres du {first.date()} au {last.date()}" if n_db else ""
+            except Exception:
+                plage = ""
+            self.status.set(f"{vals['symbol']} : {len(self.df)} barres{plage}. "
+                            f"Avis : {self.adv['label']} (score {self.adv['score']:+.2f}).")
 
         self._run_async(work, done)
 
@@ -232,6 +238,8 @@ class TradeHelperApp:
         t.insert("end", ")\n\n")
         t.insert("end", f"Dernier cours : {adv['last_close']:.2f}   RSI : {adv['rsi']}   ADX : {adv['adx']}\n")
         t.insert("end", f"ATR : {adv['atr_pct'] * 100:.2f} %   Risque : {adv['risk']}   Horizon : {adv['horizon']}\n")
+        if adv.get("earnings_date"):
+            t.insert("end", f"Prochaine publication (résultats) : {adv['earnings_date']}\n")
         if adv["stop_suggestion"]:
             t.insert("end", f"Stop suggéré (2x ATR) : {adv['stop_suggestion']:.2f}\n")
         t.insert("end", "\nDétail :\n")
