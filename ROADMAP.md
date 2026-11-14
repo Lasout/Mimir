@@ -61,6 +61,12 @@ Contexte projet pour agents : voir [`AGENTS.md`](AGENTS.md).
       affiché dans un bandeau dédié de l'onglet Screener
 - [x] **ETF ajoutés à l'univers** (SPY, QQQ, VOO, VTI, SCHD, JEPI, VWCE.DE, IWDA.AS,
       EQQQ.PA, CSPX.L, CW8.PA...)
+- [x] **Mode calcul GPU optionnel** (`compute.py`, `requirements-gpu.txt`) : backend
+      `auto`/`cpu`/`cuda` (config + env `TRADEHELPER_BACKEND` + sélecteur GUI) ; en CUDA,
+      indicateurs via cupy (`add_all_gpu`, test d'équivalence GPU vs CPU exécuté seulement
+      sur machine NVIDIA) et ML via XGBoost `device="cuda"` ; en CPU, screener parallélisé
+      en pool de processus. Repli CPU automatique et silencieux si pas de GPU.
+      Note : les RTX 50 (Blackwell) demandent CUDA >= 12.8 (cupy-cuda12x >= 13.6).
 
 ## P3 — alertes, paper trading, exécution
 

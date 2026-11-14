@@ -30,6 +30,10 @@ DEFAULTS: dict = {
     "request_timeout": 20,
     # calendrier des annonces : TTL du cache (24 h)
     "events_ttl_seconds": 24 * 3600,
+    # backend de calcul : "auto" (CUDA si dispo) | "cpu" | "cuda" — env TRADEHELPER_BACKEND
+    "compute_backend": "auto",
+    # parallélisme du screener en mode CPU (processus) ; en mode CUDA, calcul GPU séquentiel
+    "screener_workers": 0,  # 0 = auto (min(8, nb CPU))
 }
 
 _ENV_MAP = {

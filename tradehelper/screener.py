@@ -8,13 +8,16 @@ prix d'entrée, stop-loss et objectif de cours.
 
 from __future__ import annotations
 
+import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
 import pandas as pd
 
 from .advice import advise
 from .backtest import periods_per_year, run_backtest
+from .compute import add_all_dispatch, detect_backend
 from .data.sources import load_data
 from .fees import get_fee_model
-from .indicators import add_all
 from .strategies import get_strategy, list_strategies
 
 BAR_HOURS = {"1d": 24.0, "1wk": 168.0, "1mo": 720.0, "12h": 12.0, "8h": 8.0,
@@ -97,60 +100,93 @@ def top_pick(rows: list[dict]) -> dict | None:
     return best
 
 
+def _screen_one(args: tuple) -> dict:
+    """Analyse un symbole (fonction module-level, picklable pour le pool de processus)."""
+    source, sym, period, interval, capital, fee, slippage, keys, backend = args
+    ppy = periods_per_year(interval, source)
+    try:
+        df = add_all_dispatch(load_data(source, sym, period=period, interval=interval),
+                              backend=backend, periods_per_year=ppy)
+        adv = advise(df, sym, source=source, interval=interval)
+        results = []
+        for key in keys:
+            params = {"device": backend} if key == "ml_signal" else {}
+            strat = get_strategy(key, **params)
+            sig = strat.generate(df)
+            res = run_backtest(df, sig, initial_capital=capital, fee=fee,
+                               slippage=slippage, periods_per_year=ppy)
+            results.append((key, strat.label, res, sig))
+        bkey, blabel, bres, bsig = _pick_best(results)
+        rec = recommend(df, bsig, bres.metrics, interval)
+        m = bres.metrics
+        return {
+            "symbol": sym,
+            "last_close": round(adv["last_close"], 4),
+            "score": adv["score"],
+            "label": adv["label"],
+            "rsi": adv["rsi"],
+            "adx": adv["adx"],
+            "atr_pct": adv["atr_pct"],
+            "risk": adv["risk"],
+            "best_strategy": bkey,
+            "strategy_label": blabel,
+            "sharpe": round(m["sharpe"], 2),
+            "total_return": round(m["total_return"], 4),
+            "n_trades": m["n_trades"],
+            "win_rate": round(m["win_rate"], 3),
+            "position": rec["position"],
+            "entry": round(rec["entry"], 4),
+            "stop": round(rec["stop"], 4),
+            "target": round(rec["target"], 4),
+            "horizon": rec["horizon"],
+            "error": None,
+        }
+    except Exception as exc:
+        return {"symbol": sym, "error": str(exc), "score": "", "label": f"Erreur: {exc}"[:40],
+                "position": "", "entry": "", "stop": "", "target": "", "horizon": "",
+                "best_strategy": "", "sharpe": "", "total_return": "", "n_trades": "",
+                "win_rate": "", "last_close": "", "rsi": "", "adx": "", "atr_pct": "",
+                "risk": "", "strategy_label": ""}
+
+
 def screen_assets(source: str, symbols: list[str], period: str = "1y", interval: str = "1d",
                   capital: float = 10_000.0, fee=None, slippage: float = 0.0005,
-                  strategies: list[str] | None = None, on_progress=None) -> list[dict]:
+                  strategies: list[str] | None = None, on_progress=None,
+                  backend: str = "auto", workers: int = 0) -> list[dict]:
     """Analyse chaque symbole avec toutes les stratégies. Retourne une liste de dicts.
 
     `fee` : modèle de frais (défaut : Trade Republic FR auto selon la source).
+    `backend` : "auto" | "cpu" | "cuda" — en "cuda", les indicateurs passent sur GPU (cupy)
+      et le ML sur XGBoost CUDA. En "cpu", les symboles sont traités en parallèle
+      (ProcessPoolExecutor, `workers` processus ; 0 = auto).
     """
     keys = strategies or [s["key"] for s in list_strategies()]
-    ppy = periods_per_year(interval, source)
     if fee is None:
         fee = get_fee_model("trade_republic_fr_auto", source)
-    rows: list[dict] = []
-    for i, sym in enumerate(symbols):
+    if backend == "auto":
+        backend = detect_backend()
+    args = [(source, s, period, interval, capital, fee, slippage, keys, backend)
+            for s in symbols]
+
+    if backend == "cpu" and len(symbols) > 1 and workers != 1:
+        w = workers or min(8, os.cpu_count() or 1, len(symbols))
+        rows: list[dict] = []
+        done = 0
+        with ProcessPoolExecutor(max_workers=w) as ex:
+            futures = {ex.submit(_screen_one, a): a[1] for a in args}
+            for fut in as_completed(futures):
+                rows.append(fut.result())
+                done += 1
+                if on_progress is not None:
+                    on_progress(done, len(symbols), futures[fut])
+        order = {s: i for i, s in enumerate(symbols)}
+        rows.sort(key=lambda r: order.get(r["symbol"], 0))
+        return rows
+
+    # mode séquentiel (cuda : calcul GPU ; ou workers=1)
+    rows = []
+    for i, a in enumerate(args):
         if on_progress is not None:
-            on_progress(i, len(symbols), sym)
-        try:
-            df = add_all(load_data(source, sym, period=period, interval=interval))
-            adv = advise(df, sym, source=source, interval=interval)
-            results = []
-            for key in keys:
-                strat = get_strategy(key)
-                sig = strat.generate(df)
-                res = run_backtest(df, sig, initial_capital=capital, fee=fee,
-                                   slippage=slippage, periods_per_year=ppy)
-                results.append((key, strat.label, res, sig))
-            bkey, blabel, bres, bsig = _pick_best(results)
-            rec = recommend(df, bsig, bres.metrics, interval)
-            m = bres.metrics
-            rows.append({
-                "symbol": sym,
-                "last_close": round(adv["last_close"], 4),
-                "score": adv["score"],
-                "label": adv["label"],
-                "rsi": adv["rsi"],
-                "adx": adv["adx"],
-                "atr_pct": adv["atr_pct"],
-                "risk": adv["risk"],
-                "best_strategy": bkey,
-                "strategy_label": blabel,
-                "sharpe": round(m["sharpe"], 2),
-                "total_return": round(m["total_return"], 4),
-                "n_trades": m["n_trades"],
-                "win_rate": round(m["win_rate"], 3),
-                "position": rec["position"],
-                "entry": round(rec["entry"], 4),
-                "stop": round(rec["stop"], 4),
-                "target": round(rec["target"], 4),
-                "horizon": rec["horizon"],
-                "error": None,
-            })
-        except Exception as exc:
-            rows.append({"symbol": sym, "error": str(exc), "score": "", "label": f"Erreur: {exc}"[:40],
-                         "position": "", "entry": "", "stop": "", "target": "", "horizon": "",
-                         "best_strategy": "", "sharpe": "", "total_return": "", "n_trades": "",
-                         "win_rate": "", "last_close": "", "rsi": "", "adx": "", "atr_pct": "",
-                         "risk": "", "strategy_label": ""})
+            on_progress(i, len(symbols), a[1])
+        rows.append(_screen_one(a))
     return rows

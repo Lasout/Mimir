@@ -55,7 +55,7 @@ class TestScreenAssets(unittest.TestCase):
         screener_mod.load_data = self._orig
 
     def test_rows_structure(self):
-        rows = screen_assets("crypto", ["UP", "DOWN"], period="1y", interval="1d")
+        rows = screen_assets("crypto", ["UP", "DOWN"], period="1y", interval="1d", workers=1)
         self.assertEqual(len(rows), 2)
         for r in rows:
             self.assertIsNone(r["error"])
@@ -71,26 +71,26 @@ class TestScreenAssets(unittest.TestCase):
 
     def test_uptrend_recommends_buy(self):
         # ma_cross est déterministe : en forte tendance haussière, position longue à la fin
-        rows = screen_assets("crypto", ["UP"], period="1y", interval="1d", strategies=["ma_cross"])
+        rows = screen_assets("crypto", ["UP"], period="1y", interval="1d", strategies=["ma_cross"], workers=1)
         self.assertEqual(rows[0]["best_strategy"], "ma_cross")
         self.assertEqual(rows[0]["position"], "ACHAT")
         self.assertGreater(rows[0]["score"], 0)
         # toutes stratégies confondues : la reco reste cohérente
-        rows_all = screen_assets("crypto", ["UP"], period="1y", interval="1d")
+        rows_all = screen_assets("crypto", ["UP"], period="1y", interval="1d", workers=1)
         self.assertIn(rows_all[0]["position"], {"ACHAT", "ATTENTE", "SHORT"})
 
     def test_error_row(self):
         def boom(source, symbol, period="1y", interval="1d"):
             raise ValueError("pas de données")
         screener_mod.load_data = boom
-        rows = screen_assets("crypto", ["XXX"], period="1y", interval="1d")
+        rows = screen_assets("crypto", ["XXX"], period="1y", interval="1d", workers=1)
         self.assertEqual(len(rows), 1)
         self.assertIsNotNone(rows[0]["error"])
         self.assertIn("Erreur", rows[0]["label"])
 
     def test_progress_callback(self):
         calls = []
-        screen_assets("crypto", ["UP", "DOWN"], period="1y", interval="1d",
+        screen_assets("crypto", ["UP", "DOWN"], period="1y", interval="1d", workers=1,
                       on_progress=lambda i, n, s: calls.append((i, n, s)))
         self.assertEqual(len(calls), 2)
         self.assertEqual(calls[0][1], 2)

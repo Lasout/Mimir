@@ -18,6 +18,7 @@ from matplotlib.figure import Figure
 from ..advice import advise
 from ..backtest import (grid_search, monte_carlo_trades, periods_per_year, run_backtest,
                         run_portfolio, walk_forward)
+from ..compute import add_all_dispatch, backend_label, detect_backend
 from ..data.sources import SOURCE_LABELS, DataError, data_range, load_data
 from ..data.universe import universe_for
 from ..fees import get_fee_model, list_presets
@@ -112,6 +113,10 @@ class TradeHelperApp:
         interval = ttk.Combobox(frame, values=INTERVALS["stock"], state="readonly", width=7)
         interval.set("1d")
         interval.grid(row=0, column=7, padx=4)
+        ttk.Label(frame, text="Calcul :").grid(row=0, column=8, sticky="w", padx=(12, 4))
+        backend = ttk.Combobox(frame, values=["auto", "cpu", "cuda"], state="readonly", width=7)
+        backend.set("auto")
+        backend.grid(row=0, column=9, padx=4)
 
         def on_source_change(_=None):
             src = source.get()
@@ -121,7 +126,8 @@ class TradeHelperApp:
             if not symbol.get().strip() or symbol.get() in DEFAULT_SYMBOLS.values():
                 symbol.set(DEFAULT_SYMBOLS[src])
         source.bind("<<ComboboxSelected>>", on_source_change)
-        return {"source": source, "symbol": symbol, "period": period, "interval": interval}
+        return {"source": source, "symbol": symbol, "period": period, "interval": interval,
+                "backend": backend}
 
     def _make_sortable(self, tree: ttk.Treeview) -> None:
         """Rend les colonnes d'un Treeview triables (clic sur l'en-tête, asc/desc)."""
@@ -164,13 +170,15 @@ class TradeHelperApp:
             "symbol": ctx["symbol"].get().strip(),
             "period": ctx["period"].get(),
             "interval": ctx["interval"].get(),
+            "backend": ctx["backend"].get(),
         }
 
     def _load_df(self, vals: dict) -> pd.DataFrame:
         if not vals["symbol"]:
             raise DataError("Symbole vide.")
         df = load_data(vals["source"], vals["symbol"], period=vals["period"], interval=vals["interval"])
-        return add_all(df)
+        ppy = periods_per_year(vals["interval"], vals["source"])
+        return add_all_dispatch(df, backend=vals.get("backend", "auto"), periods_per_year=ppy)
 
     # ------------------------------------------------------------- onglet 1
     def _build_analyse_tab(self):
@@ -717,6 +725,7 @@ class TradeHelperApp:
         def work():
             return screen_assets(
                 vals["source"], symbols, period=vals["period"], interval=vals["interval"],
+                backend=vals.get("backend", "auto"),
                 on_progress=lambda i, n, s: prog_q.put(f"{i + 1}/{n} — {s}"),
             )
 
@@ -742,8 +751,16 @@ class TradeHelperApp:
                     r["sharpe"], f"{r['total_return'] * 100:+.1f}" if isinstance(r["total_return"], float) else r["total_return"],
                     r["n_trades"], r["position"], r["horizon"], r["entry"], r["stop"], r["target"]))
             n_ok = sum(1 for r in result if not r["error"])
+            from ..compute import gpu_info
+            be = vals.get("backend", "auto")
+            if be == "cuda" and gpu_info() is None:
+                be_label = "CPU (repli : 'cuda' demandé mais aucune carte CUDA détectée)"
+            else:
+                be_used = detect_backend() if be == "auto" else be
+                be_label = backend_label(be_used)
             self.status.set(f"Screener terminé : {n_ok}/{len(result)} actifs analysés "
-                            f"({vals['source']}, {vals['interval']}). Double-clic pour ouvrir un actif.")
+                            f"({vals['source']}, {vals['interval']}) — calcul : {be_label}. "
+                            f"Double-clic pour ouvrir un actif.")
             pick = top_pick(result)
             if pick:
                 self.scr_advice_var.set(

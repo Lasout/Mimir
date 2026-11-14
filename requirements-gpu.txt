@@ -1,0 +1,7 @@
+# Mode GPU optionnel (NVIDIA) — ex. RTX 5060 Ti 16 Go.
+# Les RTX 50 (Blackwell, sm_120) nécessitent CUDA >= 12.8 : prendre cupy-cuda12x >= 13.6
+# avec un driver NVIDIA récent.
+cupy-cuda12x>=13.6
+xgboost>=2.1
+# Optionnel (RAPIDS, pandas 100 % GPU — lourd, non requis par le backend cupy) :
+# cudf-cu12>=24.10

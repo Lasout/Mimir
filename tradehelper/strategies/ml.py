@@ -48,20 +48,35 @@ class MLSignal(Strategy):
     label = "Signal ML (HistGB, fenêtre glissante, CV temporelle)"
     description = "Classifieur sklearn sur features techniques causales ; réentraîné périodiquement."
     default_params = {"retrain_every": 20, "train_window": 500, "min_train": 60,
-                      "threshold": 0.0, "margin": 0.02, "n_splits": 3, "atr_stop": 2.5}
+                      "threshold": 0.0, "margin": 0.02, "n_splits": 3, "atr_stop": 2.5,
+                      "device": "auto"}  # auto | cpu | cuda (cuda -> XGBoost device="cuda")
 
     def __init__(self, **params):
         super().__init__(**params)
         self.val_accuracy: float | None = None
 
+    def _make_model(self, device: str):
+        if device == "cuda":
+            try:
+                from xgboost import XGBClassifier
+                return XGBClassifier(tree_method="hist", device="cuda", n_estimators=200,
+                                     max_depth=6, learning_rate=0.1, random_state=0, n_jobs=-1)
+            except ImportError:
+                pass  # pas de xgboost -> repli sklearn CPU
+        from sklearn.ensemble import HistGradientBoostingClassifier
+        return HistGradientBoostingClassifier(max_iter=100, learning_rate=0.1, random_state=0)
+
     def generate(self, df: pd.DataFrame) -> pd.DataFrame:
         try:
-            from sklearn.ensemble import HistGradientBoostingClassifier
             from sklearn.model_selection import TimeSeriesSplit
         except ImportError as exc:
             raise RuntimeError("scikit-learn requis pour ml_signal (pip install scikit-learn)") from exc
 
         p = self.params
+        device = p.get("device", "auto")
+        if device == "auto":
+            from ..compute import detect_backend
+            device = detect_backend()
         sig = self._empty_signals(df)
         feats = _features(df)
         labels = _labels(df, float(p["threshold"]))
@@ -79,7 +94,7 @@ class MLSignal(Strategy):
             accs = []
             tscv = TimeSeriesSplit(n_splits=int(p["n_splits"]))
             for tr, te in tscv.split(X[valid]):
-                clf = HistGradientBoostingClassifier(max_iter=100, learning_rate=0.1, random_state=0)
+                clf = self._make_model(device)
                 clf.fit(X[valid][tr], y[valid][tr])
                 accs.append(float(clf.score(X[valid][te], y[valid][te])))
             self.val_accuracy = float(np.mean(accs)) if accs else None
@@ -94,8 +109,7 @@ class MLSignal(Strategy):
                 lo = max(0, i - window)
                 mask = ~np.isnan(y[lo:i])
                 if mask.sum() >= 30:
-                    model = HistGradientBoostingClassifier(max_iter=100, learning_rate=0.1,
-                                                           random_state=0)
+                    model = self._make_model(device)
                     model.fit(X[lo:i][mask], y[lo:i][mask])
             if model is not None:
                 prob = model.predict_proba(X[i:i + 1])[0, 1]

@@ -20,6 +20,10 @@ repli automatique hors-ligne). Yahoo rate-limite parfois (429) : le cache sert d
 run.py                        # point d'entrée GUI : python3 run.py
 tradehelper/
 ├── config.py                 # configuration (défauts < fichier JSON $TRADEHELPER_CONFIG < env)
+├── compute.py                # backend de calcul : auto/cpu/cuda (cupy GPU + xgboost CUDA),
+│                             #   détection GPU, add_all_gpu (équivalent cupy de add_all),
+│                             #   repli CPU automatique ; vérifier avec `python3 -m tradehelper.compute`
+│                             #   GPU : pip install -r requirements-gpu.txt (CUDA >= 12.8 pour RTX 50)
 ├── timeutil.py               # utcnow_naive() (pandas 3.x)
 ├── data/
 │   ├── store.py              # Store SQLite (~/.local/share/tradehelper/market.db) :
@@ -48,8 +52,9 @@ tradehelper/
 │   └── portfolio.py          # run_portfolio : multi-actifs, parts égales, corrélation
 ├── analysis/                 # technical.py (score -1..1) + fundamental.py (info yfinance)
 ├── advice.py                 # avis combiné 65 % tech / 35 % fond -> label + raisons + stop + earnings
-├── screener.py               # screen_assets() : backteste TOUTES les stratégies par actif,
-│                             #   recommande position + horizon + entrée/stop/objectif ;
+├── screener.py               # screen_assets(backend=...) : backteste TOUTES les stratégies par
+│                             #   actif ; recommande position + horizon + entrée/stop/objectif ;
+│                             #   backend cpu -> pool de processus, cuda -> indicateurs GPU + ML CUDA ;
 │                             #   top_pick() = conseil « quoi acheter aujourd'hui » (bandeau GUI)
 └── gui/
     ├── app.py                # Tkinter : 1 barre d'instrument GLOBALE partagée par les 4 onglets

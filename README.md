@@ -50,6 +50,13 @@ Outil d'aide au trading orienté **swing / day trading**, basé sur des **donné
   crypto, forex — liste déroulante éditable, saisie libre possible.
 - **Conseil du jour** : après un screener, un bandeau indique **quoi acheter aujourd'hui**
   (meilleur candidat en position ACHAT : actif, entrée, stop, objectif, horizon, stratégie).
+- **Mode calcul GPU optionnel** : sélecteur « Calcul : auto / cpu / cuda » dans la barre du haut
+  (aussi `TRADEHELPER_BACKEND` en env). En `cuda` : indicateurs sur GPU via **cupy** et ML
+  via **XGBoost CUDA** — utile pour accélérer le screener sur une carte NVIDIA
+  (ex. RTX 5060 Ti 16 Go ; les RTX 50 nécessitent CUDA ≥ 12.8). En `cpu` : le screener
+  parallélise les actifs sur plusieurs processus. Sans GPU, repli CPU automatique.
+  Installation GPU : `pip install -r requirements-gpu.txt` ; diagnostic :
+  `python3 -m tradehelper.compute`.
 - **Conseils** : score combiné technique (65 %) + fondamental (35 % pour les actions :
   PER vs secteur, PEG, marges, croissance, dette, avis analystes, objectif de cours),
   traduit en avis lisible (Achat fort → Vente) avec raisons, niveau de risque,
