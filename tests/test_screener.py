@@ -59,7 +59,7 @@ class TestScreenAssets(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         for r in rows:
             self.assertIsNone(r["error"])
-            for key in ("symbol", "score", "label", "best_strategy", "sharpe",
+            for key in ("symbol", "type", "score", "label", "best_strategy", "sharpe",
                         "position", "entry", "stop", "target", "horizon", "n_trades"):
                 self.assertIn(key, r)
             self.assertIn(r["best_strategy"],
@@ -87,6 +87,14 @@ class TestScreenAssets(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertIsNotNone(rows[0]["error"])
         self.assertIn("Erreur", rows[0]["label"])
+        self.assertEqual(rows[0]["type"], "Crypto")
+
+    def test_type_column_stock_etf(self):
+        rows = screen_assets("stock", ["SPY", "AAPL"], period="1y", interval="1d",
+                             strategies=["ma_cross"], workers=1)
+        types = {r["symbol"]: r["type"] for r in rows}
+        self.assertEqual(types["SPY"], "ETF")
+        self.assertEqual(types["AAPL"], "Action")
 
     def test_progress_callback(self):
         calls = []

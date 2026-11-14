@@ -17,6 +17,7 @@ from .advice import advise
 from .backtest import periods_per_year, run_backtest
 from .compute import add_all_dispatch, detect_backend
 from .data.sources import load_data
+from .data.universe import asset_type
 from .fees import get_fee_model
 from .strategies import get_strategy, list_strategies
 
@@ -121,6 +122,7 @@ def _screen_one(args: tuple) -> dict:
         m = bres.metrics
         return {
             "symbol": sym,
+            "type": asset_type(source, sym),
             "last_close": round(adv["last_close"], 4),
             "score": adv["score"],
             "label": adv["label"],
@@ -142,7 +144,8 @@ def _screen_one(args: tuple) -> dict:
             "error": None,
         }
     except Exception as exc:
-        return {"symbol": sym, "error": str(exc), "score": "", "label": f"Erreur: {exc}"[:40],
+        return {"symbol": sym, "type": asset_type(source, sym), "error": str(exc),
+                "score": "", "label": f"Erreur: {exc}"[:40],
                 "position": "", "entry": "", "stop": "", "target": "", "horizon": "",
                 "best_strategy": "", "sharpe": "", "total_return": "", "n_trades": "",
                 "win_rate": "", "last_close": "", "rsi": "", "adx": "", "atr_pct": "",

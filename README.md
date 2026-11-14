@@ -61,10 +61,10 @@ Outil d'aide au trading orienté **swing / day trading**, basé sur des **donné
   PER vs secteur, PEG, marges, croissance, dette, avis analystes, objectif de cours),
   traduit en avis lisible (Achat fort → Vente) avec raisons, niveau de risque,
   stop suggéré (2×ATR) et horizon conseillé.
-- **Sélection d'actif** : liste déroulante d'actifs connus par source (43 actions US/Europe,
-  14 paires crypto, 12 paires forex — voir `tradehelper/data/universe.py`), **saisie libre
-  possible** pour n'importe quel symbole. Changer de source met à jour la liste, l'actif
-  par défaut et les intervalles disponibles.
+- **Sélection d'actif** : liste déroulante d'actifs connus par source (43 actions US/Europe
+  + 15 ETF, 14 paires crypto, 12 paires forex — voir `tradehelper/data/universe.py`),
+  **saisie libre possible** pour n'importe quel symbole. Changer de source met à jour
+  la liste, l'actif par défaut et les intervalles disponibles.
 - **Un seul instrument pour toute l'app** : la barre du haut (source / actif / période /
   intervalle) est **commune aux 3 onglets** — le backtest porte toujours sur l'actif
   sélectionné, quel que soit l'onglet d'où il est lancé.
@@ -79,8 +79,10 @@ Outil d'aide au trading orienté **swing / day trading**, basé sur des **donné
      rendement si moins de 2 trades) et une **recommandation** est produite : position
      (ACHAT / ATTENTE / SHORT selon le dernier signal), horizon (durée moyenne des
      trades, ex. « ≈ 14 j »), prix d'entrée, stop-loss (2×ATR) et objectif (R:R 2,5).
-     **Double-clic** sur une ligne : l'actif ET la stratégie recommandée sont chargés
-     dans le contexte global, l'onglet Analyse s'ouvre et s'analyse.
+     Colonne **type** (Action / ETF / Crypto / Forex). **Double-clic** sur une ligne :
+     l'actif ET la stratégie recommandée sont chargés dans le contexte global,
+     l'onglet Analyse s'ouvre et s'analyse. La **liste par défaut** mélange actions et
+     ETF (~1/3 d'ETF : SPY, QQQ, VOO…) pour ne pas manquer les ETF.
 
 ## Installation
 

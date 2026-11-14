@@ -61,6 +61,9 @@ Contexte projet pour agents : voir [`AGENTS.md`](AGENTS.md).
       affiché dans un bandeau dédié de l'onglet Screener
 - [x] **ETF ajoutés à l'univers** (SPY, QQQ, VOO, VTI, SCHD, JEPI, VWCE.DE, IWDA.AS,
       EQQQ.PA, CSPX.L, CW8.PA...)
+- [x] **ETF visibles par défaut dans le screener et le portefeuille** : listes par défaut
+      mixtes actions + ETF (`default_symbols()`, ~1/3 d'ETF) + colonne « type »
+      (Action/ETF/Crypto/Forex) dans le tableau du screener
 - [x] **Mode calcul GPU optionnel** (`compute.py`, `requirements-gpu.txt`) : backend
       `auto`/`cpu`/`cuda` (config + env `TRADEHELPER_BACKEND` + sélecteur GUI) ; en CUDA,
       indicateurs via cupy (`add_all_gpu`, test d'équivalence GPU vs CPU exécuté seulement

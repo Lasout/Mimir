@@ -20,7 +20,7 @@ from ..backtest import (grid_search, monte_carlo_trades, periods_per_year, run_b
                         run_portfolio, walk_forward)
 from ..compute import add_all_dispatch, backend_label, detect_backend
 from ..data.sources import SOURCE_LABELS, DataError, data_range, load_data
-from ..data.universe import universe_for
+from ..data.universe import universe_for, default_symbols
 from ..fees import get_fee_model, list_presets
 from ..indicators import add_all
 from ..screener import screen_assets, top_pick
@@ -612,7 +612,7 @@ class TradeHelperApp:
     def _fill_pf_symbols(self):
         src = self.ctx["source"].get()
         self.pf_text.delete("1.0", "end")
-        self.pf_text.insert("1.0", "\n".join(universe_for(src)[:6]))
+        self.pf_text.insert("1.0", "\n".join(default_symbols(src, 6)))
 
     def on_portfolio(self):
         vals = self._ctx_values(self.ctx)
@@ -685,10 +685,10 @@ class TradeHelperApp:
         self.scr_text = scrolledtext.ScrolledText(self.tab_screener, height=5, width=60)
         self.scr_text.pack(anchor="w", padx=6, pady=2)
         self._fill_symbols()
-        cols = ("symbole", "cours", "avis", "stratégie", "sharpe", "ret%", "trades",
+        cols = ("symbole", "type", "cours", "avis", "stratégie", "sharpe", "ret%", "trades",
                 "position", "horizon", "entrée", "stop", "objectif")
         self.scr_tree = ttk.Treeview(self.tab_screener, columns=cols, show="headings", height=18)
-        widths = {"symbole": 90, "cours": 80, "avis": 150, "stratégie": 170, "sharpe": 60,
+        widths = {"symbole": 90, "type": 60, "cours": 80, "avis": 150, "stratégie": 170, "sharpe": 60,
                   "ret%": 70, "trades": 55, "position": 90, "horizon": 70, "entrée": 80,
                   "stop": 80, "objectif": 80}
         for c in cols:
@@ -701,7 +701,7 @@ class TradeHelperApp:
     def _fill_symbols(self):
         src = self.ctx["source"].get()
         self.scr_text.delete("1.0", "end")
-        self.scr_text.insert("1.0", "\n".join(universe_for(src)[:10]))
+        self.scr_text.insert("1.0", "\n".join(default_symbols(src, 10)))
 
     def on_screener(self):
         vals = self._ctx_values(self.ctx)
@@ -747,7 +747,7 @@ class TradeHelperApp:
 
             for r in sorted(result, key=sort_key):
                 self.scr_tree.insert("", "end", values=(
-                    r["symbol"], r["last_close"], r["label"], r["strategy_label"],
+                    r["symbol"], r.get("type", ""), r["last_close"], r["label"], r["strategy_label"],
                     r["sharpe"], f"{r['total_return'] * 100:+.1f}" if isinstance(r["total_return"], float) else r["total_return"],
                     r["n_trades"], r["position"], r["horizon"], r["entry"], r["stop"], r["target"]))
             n_ok = sum(1 for r in result if not r["error"])
