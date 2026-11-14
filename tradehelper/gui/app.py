@@ -9,7 +9,7 @@ from __future__ import annotations
 import queue
 import threading
 import tkinter as tk
-from tkinter import messagebox, scrolledtext, ttk
+from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 import pandas as pd
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
@@ -20,12 +20,15 @@ from ..backtest import (grid_search, monte_carlo_trades, periods_per_year, run_b
                         run_portfolio, walk_forward)
 from ..compute import add_all_dispatch, backend_label, detect_backend
 from ..data.sources import SOURCE_LABELS, DataError, data_range, load_data
+from ..data.store import default_store
 from ..data.universe import universe_for, default_symbols
 from ..fees import get_fee_model, list_presets
 from ..indicators import add_all
 from ..screener import screen_assets, top_pick
 from ..strategies import get_strategy, list_strategies
-from .chart import draw_equity_chart, draw_price_chart
+from .chart import attach_price_crosshair, draw_equity_chart, draw_price_chart
+from .export import export_figure_png, export_screener_csv, export_text_report, export_trades_csv
+from .theme import FONT_SCALE_MAX, FONT_SCALE_MIN, apply_mpl_theme, apply_ttk
 
 PERIODS = ["1mo", "3mo", "6mo", "1y", "2y", "5y", "max"]
 INTERVALS = {
@@ -34,6 +37,40 @@ INTERVALS = {
     "forex": ["1d"],
 }
 DEFAULT_SYMBOLS = {"stock": "AAPL", "crypto": "BTCUSDT", "forex": "EURUSD"}
+
+
+class ToolTip:
+    """Infobulle au survol d'un widget (accessibilité : description des boutons)."""
+
+    def __init__(self, widget, text: str):
+        self.widget = widget
+        self.text = text
+        self.tip = None
+        widget.bind("<Enter>", self._show)
+        widget.bind("<Leave>", self._hide)
+
+    def _show(self, _=None):
+        if self.tip is not None:
+            return
+        x = self.widget.winfo_rootx() + 24
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        self.tip = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        lbl = tk.Label(tw, text=self.text, justify="left", relief="solid", borderwidth=1,
+                       padx=6, pady=3, wraplength=320)
+        lbl.pack()
+        try:
+            style = ttk.Style(self.widget)
+            lbl.configure(bg=style.lookup(".", "background"),
+                          fg=style.lookup(".", "foreground"))
+        except tk.TclError:
+            pass
+
+    def _hide(self, _=None):
+        if self.tip is not None:
+            self.tip.destroy()
+            self.tip = None
 
 
 class TradeHelperApp:
@@ -47,6 +84,20 @@ class TradeHelperApp:
         self.backtest_result = None
         self.screener_rows: dict[str, dict] = {}
         self._sort_state: dict[tuple[int, str], bool] = {}  # (id(tree), colonne) -> desc
+        self._xh = None  # réticule de survol du graphique d'analyse
+        self._watch_items: list[tuple[str, str]] = []
+        try:
+            self.store = default_store()
+        except Exception:
+            self.store = None  # l'app marche sans persistance (watchlist/historique désactivés)
+        self.theme_name = "clair"
+        self.font_scale = 1.0
+        if self.store is not None:
+            self.theme_name = self.store.meta_get("ui.theme") or "clair"
+            try:
+                self.font_scale = float(self.store.meta_get("ui.font_scale") or 1.0)
+            except (TypeError, ValueError):
+                self.font_scale = 1.0
 
         # --- barre d'instrument globale, partagée par tous les onglets ---
         ctx_frame = ttk.LabelFrame(root, text="Instrument (commun à tous les onglets)")
@@ -69,9 +120,25 @@ class TradeHelperApp:
         self._build_screener_tab()
         self._build_portfolio_tab()
 
+        self._build_menu()
+        self._bind_shortcuts()
+        ToolTip(self.btn_analyse, "Charge l'actif de la barre du haut, calcule les indicateurs, "
+                                 "la stratégie choisie et l'avis (technique + fondamental). Ctrl+R")
+        ToolTip(self.btn_bt, "Backtest walk-forward de la stratégie choisie sur l'actif courant. Ctrl+B")
+        ToolTip(self.btn_scr, "Backteste toutes les stratégies sur chaque symbole de la liste "
+                               "et recommande position / horizon / niveaux. Ctrl+S")
+        ToolTip(self.btn_pf, "Backtest du portefeuille multi-actifs (parts égales, frais par exécution).")
+
+        bottom = ttk.Frame(root)
+        bottom.pack(fill="x", side="bottom")
         self.status = tk.StringVar(value="Prêt. Données ouvertes : Yahoo Finance, Binance, BCE.")
-        ttk.Label(root, textvariable=self.status, relief="sunken", anchor="w").pack(
-            fill="x", side="bottom")
+        ttk.Label(bottom, textvariable=self.status, style="Status.TLabel", anchor="w").pack(
+            side="left", fill="x", expand=True)
+        self.backend_var = tk.StringVar(value="")
+        ttk.Label(bottom, textvariable=self.backend_var, style="Status.TLabel").pack(side="right")
+        self.ctx["backend"].bind("<<ComboboxSelected>>", lambda _=None: self._update_backend_label())
+        self._update_backend_label()
+        self.apply_ui_theme()
 
     # ------------------------------------------------------------------ util
     def _run_async(self, work, on_done):
@@ -118,16 +185,19 @@ class TradeHelperApp:
         backend.set("auto")
         backend.grid(row=0, column=9, padx=4)
 
-        def on_source_change(_=None):
-            src = source.get()
-            interval["values"] = INTERVALS[src]
-            interval.set(INTERVALS[src][0])
-            symbol["values"] = universe_for(src)
-            if not symbol.get().strip() or symbol.get() in DEFAULT_SYMBOLS.values():
-                symbol.set(DEFAULT_SYMBOLS[src])
-        source.bind("<<ComboboxSelected>>", on_source_change)
+        source.bind("<<ComboboxSelected>>", lambda _=None: self._set_source(source.get()))
         return {"source": source, "symbol": symbol, "period": period, "interval": interval,
                 "backend": backend}
+
+    def _set_source(self, src: str):
+        """Applique une source à la barre d'instrument globale (combo + intervalles + actif)."""
+        ctx = self.ctx
+        ctx["source"].set(src)
+        ctx["interval"]["values"] = INTERVALS[src]
+        ctx["interval"].set(INTERVALS[src][0])
+        ctx["symbol"]["values"] = universe_for(src)
+        if not ctx["symbol"].get().strip() or ctx["symbol"].get() in DEFAULT_SYMBOLS.values():
+            ctx["symbol"].set(DEFAULT_SYMBOLS[src])
 
     def _make_sortable(self, tree: ttk.Treeview) -> None:
         """Rend les colonnes d'un Treeview triables (clic sur l'en-tête, asc/desc)."""
@@ -180,6 +250,306 @@ class TradeHelperApp:
         ppy = periods_per_year(vals["interval"], vals["source"])
         return add_all_dispatch(df, backend=vals.get("backend", "auto"), periods_per_year=ppy)
 
+    # ------------------------------------------------------------- thème & UI
+    def apply_ui_theme(self):
+        """Applique thème clair/sombre + taille de police (persistés), recolore les graphiques."""
+        style = ttk.Style(self.root)
+        apply_ttk(style, self.theme_name, self.font_scale)
+        apply_mpl_theme(self.theme_name)
+        if hasattr(self, "theme_var"):
+            self.theme_var.set(self.theme_name == "sombre")
+        if self.store is not None:
+            try:
+                self.store.meta_set("ui.theme", self.theme_name)
+                self.store.meta_set("ui.font_scale", self.font_scale)
+            except Exception:
+                pass
+        for canvas in (getattr(self, "canvas_a", None), getattr(self, "canvas_bt", None),
+                       getattr(self, "canvas_pf", None)):
+            if canvas is not None:
+                canvas.get_tk_widget().configure(
+                    bg=style.lookup("TFrame", "background"))
+        self._redraw_charts()
+
+    def _redraw_charts(self):
+        """Redessine les graphiques existants avec le thème courant (si des données sont chargées)."""
+        if getattr(self, "df", None) is not None and self.last_signals is not None:
+            vals = self._ctx_values(self.ctx)
+            draw_price_chart(self.fig_a, self.df, self.last_signals,
+                             title=f"{vals['symbol']} — {vals['interval']} — stratégie {self.strat_var.get()}")
+            self.canvas_a.draw_idle()
+            self._attach_crosshair()
+        if self.backtest_result is not None and getattr(self, "_bt_draw", None) is not None:
+            res, strat, vals, suffix = self._bt_draw
+            draw_equity_chart(self.fig_bt, res.equity, res.trades,
+                              title=f"Equity — {strat.label} sur {vals['symbol']} ({vals['interval']}) {suffix}")
+            self.canvas_bt.draw_idle()
+
+    def toggle_theme(self):
+        self.theme_name = "sombre" if self.theme_name == "clair" else "clair"
+        self.apply_ui_theme()
+        self.status.set(f"Thème {self.theme_name} appliqué (Ctrl+D pour changer).")
+
+    def zoom_font(self, delta: float):
+        self.font_scale = min(FONT_SCALE_MAX, max(FONT_SCALE_MIN, round(self.font_scale + delta, 2)))
+        self.apply_ui_theme()
+        self.status.set(f"Taille de police : {int(self.font_scale * 100)} %")
+
+    def _update_backend_label(self):
+        be = self.ctx["backend"].get()
+        used = detect_backend() if be == "auto" else be
+        self.backend_var.set(f"Calcul : {backend_label(used)}")
+
+    def _attach_crosshair(self):
+        if self._xh is not None:
+            self._xh.disconnect()
+            self._xh = None
+        if self.df is not None:
+            self._xh = attach_price_crosshair(self.canvas_a, self.fig_a, self.df)
+
+    # ------------------------------------------------------------- menu & raccourcis
+    def _build_menu(self):
+        menubar = tk.Menu(self.root)
+        self.theme_var = tk.BooleanVar(value=self.theme_name == "sombre")
+
+        m_fichier = tk.Menu(menubar, tearoff=0)
+        m_fichier.add_command(label="Exporter le graphique en PNG", accelerator="Ctrl+E",
+                              command=self._export_png_active)
+        m_fichier.add_command(label="Exporter le screener en CSV", accelerator="Ctrl+Shift+S",
+                              command=self._export_screener_csv)
+        m_fichier.add_command(label="Exporter les trades du backtest en CSV",
+                              command=self._export_trades_csv)
+        m_fichier.add_command(label="Exporter le rapport affiché en TXT",
+                              command=self._export_report_txt)
+        m_fichier.add_separator()
+        m_fichier.add_command(label="Historique des analyses", accelerator="Ctrl+H",
+                              command=self._show_history)
+        m_fichier.add_separator()
+        m_fichier.add_command(label="Quitter", accelerator="Ctrl+Q", command=self.root.destroy)
+        menubar.add_cascade(label="Fichier", menu=m_fichier)
+
+        m_onglets = tk.Menu(menubar, tearoff=0)
+        for i, (tab, label) in enumerate([(self.tab_analyse, "Analyse & conseils"),
+                                          (self.tab_backtest, "Backtest"),
+                                          (self.tab_screener, "Screener"),
+                                          (self.tab_portfolio, "Portefeuille")], start=1):
+            m_onglets.add_command(label=f"{label}", accelerator=f"Ctrl+{i}",
+                                  command=lambda t=tab: self.notebook.select(t))
+        m_onglets.add_separator()
+        m_onglets.add_command(label="Lancer l'analyse", accelerator="Ctrl+R", command=self.on_analyse)
+        m_onglets.add_command(label="Lancer le backtest", accelerator="Ctrl+B", command=self.on_backtest)
+        m_onglets.add_command(label="Lancer le screener", accelerator="Ctrl+S", command=self.on_screener)
+        menubar.add_cascade(label="Onglets", menu=m_onglets)
+
+        m_aff = tk.Menu(menubar, tearoff=0)
+        m_aff.add_checkbutton(label="Thème sombre", variable=self.theme_var,
+                              accelerator="Ctrl+D", command=self.toggle_theme)
+        m_aff.add_command(label="Agrandir le texte", accelerator="Ctrl++",
+                          command=lambda: self.zoom_font(+0.1))
+        m_aff.add_command(label="Réduire le texte", accelerator="Ctrl+-",
+                          command=lambda: self.zoom_font(-0.1))
+        menubar.add_cascade(label="Affichage", menu=m_aff)
+
+        m_aide = tk.Menu(menubar, tearoff=0)
+        m_aide.add_command(label="Raccourcis clavier", accelerator="F1", command=self._show_shortcuts)
+        m_aide.add_command(label="À propos", command=self._show_about)
+        menubar.add_cascade(label="Aide", menu=m_aide)
+
+        self.root.config(menu=menubar)
+
+    def _bind_shortcuts(self):
+        r = self.root
+        tabs = [self.tab_analyse, self.tab_backtest, self.tab_screener, self.tab_portfolio]
+        for i, tab in enumerate(tabs, start=1):
+            r.bind_all(f"<Control-Key-{i}>", lambda _=None, t=tab: self.notebook.select(t))
+        r.bind_all("<Control-r>", lambda _=None: self.on_analyse())
+        r.bind_all("<Control-b>", lambda _=None: self.on_backtest())
+        r.bind_all("<Control-s>", lambda _=None: self.on_screener())
+        r.bind_all("<Control-Shift-S>", lambda _=None: self._export_screener_csv())
+        r.bind_all("<Control-e>", lambda _=None: self._export_png_active())
+        r.bind_all("<Control-h>", lambda _=None: self._show_history())
+        r.bind_all("<Control-d>", lambda _=None: self.toggle_theme())
+        r.bind_all("<Control-equal>", lambda _=None: self.zoom_font(+0.1))
+        r.bind_all("<Control-KP_Add>", lambda _=None: self.zoom_font(+0.1))
+        r.bind_all("<Control-minus>", lambda _=None: self.zoom_font(-0.1))
+        r.bind_all("<Control-KP_Subtract>", lambda _=None: self.zoom_font(-0.1))
+        r.bind_all("<F1>", lambda _=None: self._show_shortcuts())
+        r.bind_all("<Control-q>", lambda _=None: r.destroy())
+
+    def _show_shortcuts(self):
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Raccourcis clavier")
+        txt = scrolledtext.ScrolledText(dlg, width=52, height=20, wrap="word")
+        txt.pack(padx=8, pady=8)
+        txt.insert("end", "\n".join([
+            "Ctrl+1..4 : changer d'onglet (Analyse / Backtest / Screener / Portefeuille)",
+            "Ctrl+R : lancer l'analyse de l'actif   Ctrl+B : lancer le backtest",
+            "Ctrl+S : lancer le screener   Ctrl+Shift+S : exporter le screener en CSV",
+            "Ctrl+E : exporter le graphique actif en PNG",
+            "Ctrl+H : historique des analyses   Ctrl+D : thème sombre / clair",
+            "Ctrl++ / Ctrl+- : agrandir / réduire le texte",
+            "Ctrl+Q : quitter   F1 : cette aide",
+            "",
+            "Souris : clic sur un en-tête de tableau = tri asc/desc ; double-clic sur une",
+            "ligne du screener = ouvrir l'actif dans l'onglet Analyse ; survol du",
+            "graphique de prix = réticule + OHLC de la barre.",
+        ]))
+        txt.config(state="disabled")
+        ttk.Button(dlg, text="Fermer", command=dlg.destroy).pack(pady=(0, 8))
+
+    def _show_about(self):
+        messagebox.showinfo(
+            "À propos de tradeHelper",
+            "tradeHelper — aide au trading (swing / day) : backtests, screener multi-stratégies,\n"
+            "conseils techniques + fondamentaux, portefeuille multi-actifs.\n"
+            "Données ouvertes : Yahoo Finance, Binance, BCE.\n\n"
+            "Avertissement : outil éducatif, pas un conseil en investissement.")
+
+    # ------------------------------------------------------------- exports
+    def _active_fig(self):
+        tab = self.notebook.select()
+        return {str(self.tab_analyse): self.fig_a, str(self.tab_backtest): self.fig_bt,
+                str(self.tab_screener): self.fig_a, str(self.tab_portfolio): self.fig_pf}.get(tab, self.fig_a)
+
+    def _ask_save(self, defaultextension: str, filetypes: list) -> str | None:
+        return filedialog.asksaveasfilename(
+            parent=self.root, defaultextension=defaultextension, filetypes=filetypes,
+            title="Exporter sous...")
+
+    def _export_png_active(self):
+        path = self._ask_save(".png", [("Image PNG", "*.png")])
+        if not path:
+            return
+        try:
+            export_figure_png(self._active_fig(), path)
+            self.status.set(f"Graphique exporté : {path}")
+        except Exception as exc:
+            messagebox.showerror("Export PNG", str(exc))
+
+    def _export_screener_csv(self):
+        rows = list(self.screener_rows.values())
+        if not rows:
+            messagebox.showinfo("Export CSV", "Lancez d'abord le screener.")
+            return
+        path = self._ask_save(".csv", [("CSV", "*.csv")])
+        if not path:
+            return
+        try:
+            export_screener_csv(rows, path)
+            self.status.set(f"Screener exporté : {path} ({len(rows)} lignes)")
+        except Exception as exc:
+            messagebox.showerror("Export CSV", str(exc))
+
+    def _export_trades_csv(self):
+        if self.backtest_result is None:
+            messagebox.showinfo("Export CSV", "Lancez d'abord un backtest simple.")
+            return
+        path = self._ask_save(".csv", [("CSV", "*.csv")])
+        if not path:
+            return
+        try:
+            export_trades_csv(self.backtest_result.trades, path)
+            self.status.set(f"Trades exportés : {path}")
+        except Exception as exc:
+            messagebox.showerror("Export CSV", str(exc))
+
+    def _export_report_txt(self):
+        tab = self.notebook.select()
+        if tab == str(self.tab_backtest):
+            text = self.bt_metrics.get("1.0", "end")
+        elif tab == str(self.tab_portfolio):
+            text = self.pf_metrics.get("1.0", "end")
+        else:
+            text = self.adv_text.get("1.0", "end")
+        path = self._ask_save(".txt", [("Texte", "*.txt")])
+        if not path:
+            return
+        try:
+            export_text_report(text, path)
+            self.status.set(f"Rapport exporté : {path}")
+        except Exception as exc:
+            messagebox.showerror("Export TXT", str(exc))
+
+    # ------------------------------------------------------------- watchlist & historique
+    def _watch_refresh(self):
+        self.watch_listbox.delete(0, "end")
+        self._watch_items = []
+        if self.store is None:
+            return
+        try:
+            items = self.store.watch_list()
+        except Exception:
+            return
+        for src, sym, _added in items:
+            self._watch_items.append((src, sym))
+            self.watch_listbox.insert("end", f"{sym}  ({src})")
+
+    def _watch_add_current(self):
+        if self.store is None:
+            return
+        src = self.ctx["source"].get()
+        sym = self.ctx["symbol"].get().strip().upper()
+        if not sym:
+            return
+        self.store.watch_add(src, sym)
+        self._watch_refresh()
+        self.status.set(f"{sym} ajouté à la watchlist.")
+
+    def _watch_remove_selected(self):
+        if self.store is None:
+            return
+        sel = self.watch_listbox.curselection()
+        if not sel:
+            return
+        src, sym = self._watch_items[sel[0]]
+        self.store.watch_remove(src, sym)
+        self._watch_refresh()
+        self.status.set(f"{sym} retiré de la watchlist.")
+
+    def _watch_load(self):
+        sel = self.watch_listbox.curselection()
+        if not sel:
+            self.status.set("Watchlist : sélectionnez d'abord un actif.")
+            return
+        src, sym = self._watch_items[sel[0]]
+        self._set_source(src)
+        self.ctx["symbol"].set(sym)
+        self.status.set(f"{sym} ({src}) chargé dans l'instrument global.")
+
+    def _log_run(self, kind: str, symbol: str, summary: str, payload: dict):
+        if self.store is None:
+            return
+        try:
+            self.store.log_run(kind, symbol, summary, payload)
+        except Exception:
+            pass  # l'historique ne doit jamais faire échouer un calcul
+
+    def _show_history(self):
+        if self.store is None:
+            messagebox.showinfo("Historique", "Stockage local indisponible.")
+            return
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Historique des analyses")
+        dlg.geometry("760x420")
+        cols = ("date", "type", "symbole", "résumé")
+        tree = ttk.Treeview(dlg, columns=cols, show="headings", height=16)
+        for c, w in zip(cols, (150, 110, 110, 380)):
+            tree.heading(c, text=c)
+            tree.column(c, width=w)
+        tree.pack(fill="both", expand=True, padx=8, pady=8)
+
+        def refresh():
+            for i in tree.get_children():
+                tree.delete(i)
+            for r in self.store.list_runs(300):
+                tree.insert("", "end", values=(r["created_at"], r["kind"], r["symbol"], r["summary"]))
+
+        refresh()
+        ttk.Button(dlg, text="Effacer l'historique", command=lambda: (
+            self.store.clear_runs(), refresh(),
+            self.status.set("Historique effacé."))).pack(pady=(0, 8))
+        ttk.Button(dlg, text="Fermer", command=dlg.destroy).pack(pady=(0, 8))
+
     # ------------------------------------------------------------- onglet 1
     def _build_analyse_tab(self):
         top = ttk.Frame(self.tab_analyse)
@@ -226,6 +596,7 @@ class TradeHelperApp:
             draw_price_chart(self.fig_a, self.df, self.last_signals,
                              title=f"{vals['symbol']} — {vals['interval']} — stratégie {strat_key}")
             self.canvas_a.draw_idle()
+            self._attach_crosshair()
             self._fill_advice()
             try:
                 first, last, n_db = data_range(vals["source"], vals["symbol"], vals["interval"])
@@ -410,6 +781,7 @@ class TradeHelperApp:
 
     def _show_bt_result(self, res, strat, vals, title_suffix=""):
         self.backtest_result = res
+        self._bt_draw = (res, strat, vals, title_suffix)
         draw_equity_chart(self.fig_bt, res.equity, res.trades,
                           title=f"Equity — {strat.label} sur {vals['symbol']} ({vals['interval']}) {title_suffix}")
         self.canvas_bt.draw_idle()
@@ -459,6 +831,10 @@ class TradeHelperApp:
             res, strat = result
             self._show_bt_result(res, strat, vals)
             m = res.metrics
+            self._log_run("backtest", vals["symbol"],
+                          f"{strat_key} : {m['n_trades']} trades, "
+                          f"rendement {m['total_return'] * 100:+.2f} %, Sharpe {m['sharpe']:.2f}",
+                          {"strategy": strat_key, "params": strat_params, "metrics": m})
             self.status.set(f"Backtest {vals['symbol']} terminé : {m['n_trades']} trades, rendement {m['total_return'] * 100:+.2f} %, frais {m.get('total_fees', 0):.2f}.")
 
         self._run_async(work, done)
@@ -659,6 +1035,10 @@ class TradeHelperApp:
             self.pf_metrics.insert("end", "\n".join(lines))
             self.pf_metrics.config(state="disabled")
             self.status.set(f"Portefeuille terminé : rendement {m['total_return'] * 100:+.2f} %, Sharpe {m['sharpe']:.2f}.")
+            self._log_run("portefeuille", ",".join(symbols),
+                          f"{len(symbols)} actifs, {strat_key} : rendement {m['total_return'] * 100:+.2f} %, "
+                          f"Sharpe {m['sharpe']:.2f}, DD max {m['max_drawdown'] * 100:.2f} %",
+                          {"strategy": strat_key, "symbols": symbols, "metrics": m})
 
         self._run_async(work, done)
 
@@ -682,9 +1062,22 @@ class TradeHelperApp:
                   wraplength=1150, justify="left").pack(anchor="w", padx=6, pady=4)
         ttk.Label(self.tab_screener,
                   text="Symboles à scanner (un par ligne) — source, période et intervalle repris de la barre du haut :").pack(anchor="w", padx=6)
-        self.scr_text = scrolledtext.ScrolledText(self.tab_screener, height=5, width=60)
-        self.scr_text.pack(anchor="w", padx=6, pady=2)
+        mid = ttk.Frame(self.tab_screener)
+        mid.pack(fill="x", padx=6, pady=2)
+        self.scr_text = scrolledtext.ScrolledText(mid, height=5, width=60)
+        self.scr_text.pack(side="left", anchor="w")
         self._fill_symbols()
+        wf = ttk.LabelFrame(mid, text="Watchlist (persistante)")
+        wf.pack(side="left", fill="y", padx=(10, 0))
+        self.watch_listbox = tk.Listbox(wf, height=5, width=24, exportselection=False)
+        self.watch_listbox.pack(side="left", fill="both", expand=True, padx=4, pady=4)
+        self.watch_listbox.bind("<Double-Button-1>", lambda _=None: self._watch_load())
+        wbtns = ttk.Frame(wf)
+        wbtns.pack(side="left", fill="y", padx=4, pady=4)
+        ttk.Button(wbtns, text="+ actif courant", command=self._watch_add_current).pack(fill="x", pady=1)
+        ttk.Button(wbtns, text="- retirer", command=self._watch_remove_selected).pack(fill="x", pady=1)
+        ttk.Button(wbtns, text="Charger", command=self._watch_load).pack(fill="x", pady=1)
+        self._watch_refresh()
         cols = ("symbole", "type", "cours", "avis", "stratégie", "sharpe", "ret%", "trades",
                 "position", "horizon", "entrée", "stop", "objectif")
         self.scr_tree = ttk.Treeview(self.tab_screener, columns=cols, show="headings", height=18)
@@ -770,6 +1163,13 @@ class TradeHelperApp:
             else:
                 self.scr_advice_var.set(
                     "Aucun candidat acheteur pertinent aujourd'hui : rester en liquidités / attendre.")
+            self._log_run("screener", vals["symbol"] or "multi",
+                          f"{n_ok}/{len(result)} actifs analysés ({vals['source']}, {vals['interval']}), "
+                          f"conseil : {pick['symbol'] if pick else 'aucun'}",
+                          {"source": vals["source"], "interval": vals["interval"], "n": len(result),
+                           "n_ok": n_ok, "top_pick": pick["symbol"] if pick else None,
+                           "rows": [{k: r.get(k) for k in ("symbol", "type", "score", "label", "position",
+                                                          "best_strategy", "sharpe")} for r in result]})
 
         self.root.after(100, poll_progress)
         self._run_async(work, done)

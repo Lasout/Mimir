@@ -32,6 +32,21 @@ CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
+CREATE TABLE IF NOT EXISTS watchlist (
+    source    TEXT NOT NULL,
+    symbol    TEXT NOT NULL,
+    added_at  TEXT NOT NULL,
+    PRIMARY KEY (source, symbol)
+);
+CREATE TABLE IF NOT EXISTS runs (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind       TEXT NOT NULL,
+    symbol     TEXT NOT NULL,
+    summary    TEXT NOT NULL,
+    payload    TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_runs_created ON runs (created_at);
 """
 
 COLUMNS = ["Open", "High", "Low", "Close", "Volume"]
@@ -122,6 +137,54 @@ class Store:
             self._conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
                                (key, json.dumps(value)))
             self._conn.commit()
+
+    # ------------------------------------------------------------- watchlist
+    def watch_add(self, source: str, symbol: str) -> None:
+        from ..timeutil import utcnow_naive
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO watchlist (source, symbol, added_at) VALUES (?, ?, ?)",
+                (source, symbol.upper(), utcnow_naive().strftime("%Y-%m-%d %H:%M:%S")))
+            self._conn.commit()
+
+    def watch_remove(self, source: str, symbol: str) -> None:
+        with self._lock:
+            self._conn.execute("DELETE FROM watchlist WHERE source=? AND symbol=?",
+                               (source, symbol.upper()))
+            self._conn.commit()
+
+    def watch_list(self) -> list[tuple[str, str, str]]:
+        """Retourne [(source, symbol, added_at)] triés par source puis symbole."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT source, symbol, added_at FROM watchlist ORDER BY source, symbol").fetchall()
+        return [(r[0], r[1], r[2]) for r in rows]
+
+    # ------------------------------------------------------------- runs (historique)
+    def log_run(self, kind: str, symbol: str, summary: str, payload: dict) -> int:
+        from ..timeutil import utcnow_naive
+        with self._lock:
+            cur = self._conn.execute(
+                "INSERT INTO runs (kind, symbol, summary, payload, created_at) VALUES (?, ?, ?, ?, ?)",
+                (kind, symbol.upper(), summary, json.dumps(payload, ensure_ascii=False, default=str),
+                 utcnow_naive().strftime("%Y-%m-%d %H:%M:%S")))
+            self._conn.commit()
+        return int(cur.lastrowid)
+
+    def list_runs(self, limit: int = 200) -> list[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, kind, symbol, summary, payload, created_at FROM runs"
+                " ORDER BY created_at DESC, id DESC LIMIT ?", (int(limit),)).fetchall()
+        return [{"id": r[0], "kind": r[1], "symbol": r[2], "summary": r[3],
+                 "payload": json.loads(r[4]), "created_at": r[5]} for r in rows]
+
+    def clear_runs(self) -> int:
+        with self._lock:
+            n = self._conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+            self._conn.execute("DELETE FROM runs")
+            self._conn.commit()
+        return int(n)
 
     def close(self) -> None:
         with self._lock:

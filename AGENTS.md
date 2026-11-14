@@ -27,7 +27,10 @@ tradehelper/
 ├── timeutil.py               # utcnow_naive() (pandas 3.x)
 ├── data/
 │   ├── store.py              # Store SQLite (~/.local/share/tradehelper/market.db) :
-│   │                         #   table bars + meta, upsert incrémental, thread-safe
+│   │                         #   tables bars + meta (upsert incrémental, thread-safe)
+│   │                         #   + watchlist (actifs suivis) + runs (historique des
+│   │                         #   analyses) ; meta sert aussi aux prefs UI (ui.theme,
+│   │                         #   ui.font_scale)
 │   ├── providers.py          # chaîne de fournisseurs : Yahoo, Binance (paginé 1000/appel),
 │   │                         #   Frankfurter (forex daily), Alpha Vantage (si clé env)
 │   ├── sources.py            # load_data(...) : sert depuis le store, ne télécharge que les
@@ -61,8 +64,14 @@ tradehelper/
     │                         #   (Analyse / Backtest / Screener / Portefeuille) ; Treeviews triables ;
     │                         #   Backtest : sélecteur de frais (TR FR défaut), vol target, stop DD,
     │                         #   boutons Walk-forward / Grid search / Monte Carlo ; double-clic
-    │                         #   screener -> charge actif + stratégie recommandée
-    └── chart.py              # chandeliers matplotlib + indicateurs + courbe d'equity
+    │                         #   screener -> charge actif + stratégie recommandée ;
+    │                         #   menubar + raccourcis (Ctrl+1..4/R/B/S/D/H/E, F1), watchlist
+    │                         #   persistante (onglet Screener), historique des runs (Ctrl+H)
+    ├── theme.py              # palettes clair/sombre (ttk clam + rcParams matplotlib) + zoom
+    │                         #   police ; partie pure testée hors-ligne (tests/test_theme.py)
+    ├── export.py             # exports PNG (Figure) / CSV (screener, trades) / TXT — fonctions pures
+    └── chart.py              # chandeliers matplotlib + indicateurs + courbe d'equity +
+                              #   PriceCrosshair (réticule + infobulle OHLC au survol)
 tests/                        # unittest, données synthétiques (tests/helpers.py), aucun réseau
 ```
 
@@ -89,7 +98,9 @@ tests/                        # unittest, données synthétiques (tests/helpers.
 ```bash
 pip install --user -r requirements.txt     # pandas numpy matplotlib yfinance requests pillow
 python3 run.py                              # lancer la GUI (nécessite un display X)
-python3 -m unittest discover -s tests -v   # tests (36 tests, hors-ligne)
+python3 -m unittest discover -s tests -v   # tests (124 tests, hors-ligne, sans display :
+                                            #   la GUI Tk n'est testée que par les scripts de
+                                            #   fumée manuels, pas par la suite unitaire)
 ```
 
 ## État actuel / limites connues
@@ -100,7 +111,8 @@ python3 -m unittest discover -s tests -v   # tests (36 tests, hors-ligne)
   paginé, ex. BTCUSDT depuis 2017). **Intraday long indisponible** : Yahoo limite
   (1m = 7 j, 5m = 60 j, 1h = 730 j max). Stooq inutilisable (challenge JS anti-bot).
 - Screener : une stratégie "best" choisie par Sharpe (repli rendement si < 2 trades).
-- Pas encore d'alertes, ni de CI, ni de watchlist persistante (hors store de prix).
+- UI : thème clair/sombre + taille de police persistés dans `meta` ; watchlist et
+  historique des runs dans le store SQLite. Pas encore d'alertes ni de CI.
 
 ## Dépôt git
 

@@ -71,6 +71,42 @@ class TestStore(unittest.TestCase):
         self.store.upsert(df, "stock", "aapl", "1d")
         self.assertEqual(self.store.count("stock", "AAPL", "1d"), 10)
 
+    def test_watchlist(self):
+        self.assertEqual(self.store.watch_list(), [])
+        self.store.watch_add("stock", "aapl")
+        self.store.watch_add("stock", "SPY")
+        self.store.watch_add("crypto", "BTCUSDT")
+        self.store.watch_add("stock", "AAPL")  # doublon -> remplacé, pas dupliqué
+        items = self.store.watch_list()
+        self.assertEqual([(s, y) for s, y, _ in items],
+                         [("crypto", "BTCUSDT"), ("stock", "AAPL"), ("stock", "SPY")])
+        self.assertTrue(all(added for _, _, added in items))
+        self.store.watch_remove("stock", "SPY")
+        self.assertEqual([y for _, y, _ in self.store.watch_list()], ["BTCUSDT", "AAPL"])
+        # persistance : réouverture de la base
+        self.store.close()
+        self.store = Store(Path(self.tmp.name) / "test.db")
+        self.assertEqual([y for _, y, _ in self.store.watch_list()], ["BTCUSDT", "AAPL"])
+
+    def test_runs_history(self):
+        self.assertEqual(self.store.list_runs(), [])
+        id1 = self.store.log_run("backtest", "aapl", "ma_cross : 12 trades", {"metrics": {"sharpe": 1.2}})
+        id2 = self.store.log_run("screener", "multi", "10/10 actifs", {"n": 10})
+        self.assertGreater(id2, id1)
+        runs = self.store.list_runs()
+        self.assertEqual(len(runs), 2)
+        self.assertEqual(runs[0]["kind"], "screener")  # plus récent d'abord
+        self.assertEqual(runs[1]["symbol"], "AAPL")     # uppercasé
+        self.assertEqual(runs[1]["payload"], {"metrics": {"sharpe": 1.2}})
+        self.assertTrue(runs[0]["created_at"])
+        self.assertEqual(self.store.clear_runs(), 2)
+        self.assertEqual(self.store.list_runs(), [])
+        # persistance après réouverture
+        self.store.log_run("portefeuille", "multi", "3 actifs", {"m": 1})
+        self.store.close()
+        self.store = Store(Path(self.tmp.name) / "test.db")
+        self.assertEqual(len(self.store.list_runs()), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

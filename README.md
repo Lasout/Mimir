@@ -68,12 +68,13 @@ Outil d'aide au trading orienté **swing / day trading**, basé sur des **donné
 - **Un seul instrument pour toute l'app** : la barre du haut (source / actif / période /
   intervalle) est **commune aux 3 onglets** — le backtest porte toujours sur l'actif
   sélectionné, quel que soit l'onglet d'où il est lancé.
-- **Interface graphique** (Tkinter + matplotlib) avec 3 onglets :
+- **Interface graphique** (Tkinter + matplotlib) avec 4 onglets :
   1. **Analyse & conseils** — graphique en chandeliers avec moyennes mobiles, Bollinger,
      RSI, MACD, volume, marqueurs d'achat/vente de la stratégie choisie + panneau d'avis.
+     **Survol du graphique** : réticule + infobulle (date, OHLC, volume, RSI de la barre).
   2. **Backtest** — choix de la stratégie et de ses paramètres, capital, commission,
      slippage, sizing ; affiche la courbe d'equity, le drawdown, les métriques et la
-     liste des trades.
+     liste des trades (triable).
   3. **Screener multi-stratégies** — pour chaque symbole de la liste, **toutes les
      stratégies sont backtestées** ; la meilleure est retenue (Sharpe, repli sur le
      rendement si moins de 2 trades) et une **recommandation** est produite : position
@@ -83,6 +84,16 @@ Outil d'aide au trading orienté **swing / day trading**, basé sur des **donné
      l'actif ET la stratégie recommandée sont chargés dans le contexte global,
      l'onglet Analyse s'ouvre et s'analyse. La **liste par défaut** mélange actions et
      ETF (~1/3 d'ETF : SPY, QQQ, VOO…) pour ne pas manquer les ETF.
+     Une **watchlist persistante** (SQLite) permet de suivre ses actifs favoris.
+  4. **Portefeuille multi-actifs** — backtest d'un panier (parts égales, matrice de
+     corrélation, frais par exécution).
+- **UI/UX** : thème **clair / sombre** (persisté, Ctrl+D), zoom du texte (Ctrl++ / Ctrl+-),
+  **menubar** (Fichier / Onglets / Affichage / Aide), **raccourcis clavier** (Ctrl+1..4
+  onglets, Ctrl+R analyse, Ctrl+B backtest, Ctrl+S screener, F1 aide), infobulles sur les
+  boutons, barre de statut avec le backend de calcul actif (CPU / GPU CUDA).
+- **Exports** : graphique en **PNG** (Ctrl+E), résultats du screener et trades en **CSV**,
+  rapport affiché en **TXT** ; **historique des analyses** (screener / backtest /
+  portefeuille) consultable et effaçable (Ctrl+H), stocké en SQLite.
 
 ## Installation
 

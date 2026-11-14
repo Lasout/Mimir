@@ -1,14 +1,16 @@
-"""Rendu matplotlib : chandeliers, indicateurs, courbe d'equity."""
+"""Rendu matplotlib : chandeliers, indicateurs, courbe d'equity + réticule de survol."""
 
 from __future__ import annotations
 
 import matplotlib.dates as mdates
 import numpy as np
 import pandas as pd
+from matplotlib import rcParams
 from matplotlib.figure import Figure
 
 UP = "#26a69a"
 DOWN = "#ef5350"
+CROSS = "#4f9cf9"
 
 
 def _candles(ax, df: pd.DataFrame) -> None:
@@ -83,7 +85,7 @@ def draw_price_chart(fig: Figure, df: pd.DataFrame, signals: pd.DataFrame | None
         ax_macd.bar(x, hist, width=0.6, color=colors, alpha=0.7)
         ax_macd.plot(x, df["MACD"], color="#1565c0", lw=1, label="MACD")
         ax_macd.plot(x, df["MACD_signal"], color="#ff7043", lw=1, label="Signal")
-        ax_macd.axhline(0, color="#666", lw=0.6)
+        ax_macd.axhline(0, color=rcParams["text.color"], lw=0.6, alpha=0.6)
         ax_macd.set_ylabel("MACD", fontsize=8)
         ax_macd.legend(loc="upper left", fontsize=6)
         ax_macd.grid(True, alpha=0.25)
@@ -99,6 +101,79 @@ def draw_price_chart(fig: Figure, df: pd.DataFrame, signals: pd.DataFrame | None
         ax.tick_params(labelbottom=False, labelsize=7)
     ax_vol.tick_params(labelsize=7)
     fig.autofmt_xdate(rotation=0)
+
+
+class PriceCrosshair:
+    """Réticule vertical + infobulle OHLC au survol du graphique de prix.
+
+    `attach_price_crosshair` branche les événements matplotlib ; appeler
+    `disconnect()` avant de rebrancher après un redraw (fig.clear()).
+    """
+
+    def __init__(self, canvas, fig: Figure, df: pd.DataFrame):
+        self.canvas = canvas
+        self.df = df.dropna(subset=["Close"])
+        self.ax = fig.axes[0] if fig.axes else None
+        self.x = mdates.date2num(self.df.index.to_pydatetime())
+        self._cids = []
+        if self.ax is not None:
+            self.vline = self.ax.axvline(0, color=CROSS, lw=0.8, ls="--", visible=False, zorder=4)
+            self.dot, = self.ax.plot([], [], marker="o", color=CROSS, ms=5, zorder=6, visible=False)
+            self.annot = self.ax.annotate(
+                "", xy=(0, 0), xytext=(14, 14), textcoords="offset points", fontsize=8,
+                color=rcParams["text.color"],
+                bbox=dict(boxstyle="round,pad=0.35", fc=rcParams["legend.facecolor"],
+                          ec=rcParams["axes.edgecolor"], alpha=0.95),
+                arrowprops=dict(arrowstyle="-", color=CROSS, lw=0.8), zorder=7, visible=False)
+            self._cids = [
+                canvas.mpl_connect("motion_notify_event", self._on_move),
+                canvas.mpl_connect("figure_leave_event", self._on_leave),
+            ]
+
+    def _on_move(self, event):
+        if self.ax is None or event.inaxes is not self.ax or event.xdata is None:
+            self._hide()
+            return
+        i = int(np.argmin(np.abs(self.x - event.xdata)))
+        if i >= len(self.df):
+            self._hide()
+            return
+        row = self.df.iloc[i]
+        xi = self.x[i]
+        self.vline.set_xdata([xi])
+        self.vline.set_visible(True)
+        self.dot.set_data([xi], [row["Close"]])
+        self.dot.set_visible(True)
+        ts = self.df.index[i]
+        vol = f"{row['Volume']:,.0f}".replace(",", " ") if "Volume" in self.df and pd.notna(row.get("Volume")) else "-"
+        rsi = f"{row['RSI14']:.1f}" if "RSI14" in self.df and pd.notna(row.get("RSI14")) else "-"
+        self.annot.set_text(
+            f"{pd.Timestamp(ts):%Y-%m-%d %H:%M}\n"
+            f"O {row['Open']:.2f}  H {row['High']:.2f}\n"
+            f"L {row['Low']:.2f}  C {row['Close']:.2f}\n"
+            f"Vol {vol}   RSI {rsi}")
+        self.annot.xy = (xi, row["Close"])
+        self.annot.set_visible(True)
+        self.canvas.draw_idle()
+
+    def _on_leave(self, _event):
+        self._hide()
+
+    def _hide(self):
+        if self.ax is None:
+            return
+        for artist in (self.vline, self.dot, self.annot):
+            artist.set_visible(False)
+        self.canvas.draw_idle()
+
+    def disconnect(self):
+        for cid in self._cids:
+            self.canvas.mpl_disconnect(cid)
+        self._cids = []
+
+
+def attach_price_crosshair(canvas, fig: Figure, df: pd.DataFrame) -> PriceCrosshair:
+    return PriceCrosshair(canvas, fig, df)
 
 
 def draw_equity_chart(fig: Figure, equity: pd.Series, trades: pd.DataFrame | None = None,

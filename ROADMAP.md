@@ -83,11 +83,19 @@ Contexte projet pour agents : voir [`AGENTS.md`](AGENTS.md).
 
 - [ ] Fondamental avancé : scoring sectoriel relatif, surprise de BPA, sentiment news
       (RSS / API gratuite), données alternatives
-- [ ] Watchlist persistante, historique des backtests et des avis (SQLite)
-- [ ] Export des rapports (CSV, PDF) et des graphiques (PNG)
-- [ ] Graphiques interactifs (mplcursors : OHLC au survol), thème sombre, onglet portefeuille
-- [ ] i18n (fr/en), accessibilité clavier, raccourcis
-- [ ] Performance : screener parallélisé (process pool), chargement lazy, cache Parquet
+- [x] **Watchlist persistante** (table SQLite `watchlist`, panneau dans l'onglet Screener :
+      ajouter l'actif courant / retirer / charger) + **historique des runs** (table
+      `runs` : screener/backtest/portefeuille loggés avec métriques, dialog Ctrl+H)
+- [x] **Exports** : PNG du graphique actif (Ctrl+E), CSV du screener (Ctrl+Shift+S) et des
+      trades, TXT du rapport affiché — via `gui/export.py` (fonctions pures testées)
+- [x] **Graphique interactif** : réticule + infobulle OHLC/volume/RSI au survol
+      (`PriceCrosshair` dans `gui/chart.py`, sans dépendance externe) ; **thème sombre**
+      (Ctrl+D, persisté, ttk clam + rcParams matplotlib) ; zoom de police (Ctrl++/Ctrl+-)
+- [x] **Accessibilité clavier & raccourcis** : menubar (Fichier/Onglets/Affichage/Aide),
+      Ctrl+1..4, Ctrl+R/B/S, Ctrl+H, F1 (dialog d'aide), infobulles sur les boutons ;
+      UI en français (i18n fr/en non fait)
+- [ ] Performance : screener parallélisé (process pool — déjà en place depuis P2),
+      chargement lazy, cache Parquet
 - [ ] Documentation utilisateur (MkDocs/Sphinx) + tutoriel « premier backtest »
 
 ## P5 — qualité & distribution
