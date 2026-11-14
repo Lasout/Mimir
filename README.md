@@ -1,5 +1,8 @@
 # tradeHelper
 
+> Pour les agents qui reprennent le projet : lire d'abord [`AGENTS.md`](AGENTS.md)
+> (architecture, règles, commandes). La feuille de route est dans [`ROADMAP.md`](ROADMAP.md).
+
 Outil d'aide au trading orienté **swing / day trading**, basé sur des **données ouvertes**
 (gratuites, sans clé API) et combinant **analyse technique** et **analyse fondamentale**.
 
