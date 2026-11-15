@@ -108,11 +108,13 @@ def load_data(source: str, symbol: str, period: str = "1y", interval: str = "1d"
 
     errors: list[str] = []
     for rstart, rend, is_head in ranges:
+        responded = False  # au moins un fournisseur a répondu (même vide) sans erreur
         for provider in providers_for(source, cfg):
             if not provider.supports(source, interval):
                 continue
             try:
                 fetched = provider.fetch(source, symbol, rstart, rend, interval, cfg)
+                responded = True
                 if fetched is not None and not fetched.empty:
                     store.upsert(fetched, source, symbol, interval)
                     store.meta_set(meta_key, utcnow_naive().isoformat())
@@ -126,8 +128,9 @@ def load_data(source: str, symbol: str, period: str = "1y", interval: str = "1d"
             except Exception as exc:
                 errors.append(f"{provider.name}: {exc}")
         else:
-            if is_head:
-                # aucun fournisseur n'a de données avant first_bar : on le mémorise
+            # on ne mémorise « rien avant first_bar » que si un fournisseur a VRAIMENT
+            # répondu vide ; si tous ont échoué (réseau...), on retentera plus tard
+            if is_head and responded:
                 store.meta_set(head_key, {"probed_at": utcnow_naive().isoformat(),
                                           "probe_start": pd.Timestamp(rstart).isoformat(),
                                           "first_available": first_bar.isoformat() if first_bar else "none"})

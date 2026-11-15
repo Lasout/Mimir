@@ -31,7 +31,9 @@ tradehelper/
 │   │                         #   + watchlist (actifs suivis) + runs (historique des
 │   │                         #   analyses) ; meta sert aussi aux prefs UI (ui.theme,
 │   │                         #   ui.font_scale, ui.lang) ; cache Parquet read-through
-│   │                         #   dans parquet/ à côté du .db (si pyarrow, sinon SQLite)
+│   │                         #   dans parquet/ à côté du .db (si pyarrow, sinon SQLite) :
+│   │                         #   snapshot COMPLET réécrit à chaque upsert + garde-fou de
+│   │                         #   comptage (snapshot < SQLite -> repli SQLite)
 │   ├── providers.py          # chaîne de fournisseurs : Yahoo, Binance (paginé 1000/appel),
 │   │                         #   Frankfurter (forex daily), Alpha Vantage (si clé env)
 │   ├── sources.py            # load_data(...) : sert depuis le store, ne télécharge que les

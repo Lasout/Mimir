@@ -108,6 +108,35 @@ class TestStore(unittest.TestCase):
         out3 = self.store.read("stock", "FAKE", "1d")
         self.assertEqual(len(out3), 120)
 
+    def test_parquet_snapshot_is_full_union(self):
+        # régression : un upsert incrémental ne doit PAS écraser le snapshot parquet
+        # avec seulement la plage neuve (sinon read() ne renverrait que l'incrément)
+        import importlib.util
+        if importlib.util.find_spec("pyarrow") is None:
+            self.skipTest("pyarrow non installé")
+        df1 = make_ohlcv(n=100)
+        self.store.upsert(df1, "stock", "FAKE", "1d")
+        df2 = make_ohlcv(n=120).iloc[100:]  # 20 barres suivantes, mêmes dates de base
+        self.store.upsert(df2, "stock", "FAKE", "1d")
+        out = self.store.read("stock", "FAKE", "1d")
+        self.assertEqual(len(out), 120)
+        pq = self.store._read_parquet("stock", "FAKE", "1d")
+        self.assertIsNotNone(pq)
+        self.assertEqual(len(pq), 120)  # snapshot = union complète
+
+    def test_parquet_stale_falls_back_to_sqlite(self):
+        # garde-fou : snapshot parquet tronqué -> repli SQLite (comptage)
+        import importlib.util
+        if importlib.util.find_spec("pyarrow") is None:
+            self.skipTest("pyarrow non installé")
+        df = make_ohlcv(n=100)
+        self.store.upsert(df, "stock", "FAKE", "1d")
+        pq = self.store._pq_path("stock", "FAKE", "1d")
+        pd.DataFrame({"ts": [df.index[-1]], "open": [1.0], "high": [1.0], "low": [1.0],
+                      "close": [1.0], "volume": [1.0]}).to_parquet(pq, index=False)
+        out = self.store.read("stock", "FAKE", "1d")
+        self.assertEqual(len(out), 100)
+
     def test_runs_history(self):
         self.assertEqual(self.store.list_runs(), [])
         id1 = self.store.log_run("backtest", "aapl", "ma_cross : 12 trades", {"metrics": {"sharpe": 1.2}})

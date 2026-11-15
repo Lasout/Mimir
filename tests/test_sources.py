@@ -150,6 +150,45 @@ class TestLoadDataIncremental(unittest.TestCase):
         heads2 = [c for c in prov.calls[n:] if c[0] == pd.Timestamp("1970-01-01")]
         self.assertEqual(len(heads2), 0)
 
+    def test_head_probe_not_recorded_when_all_providers_fail(self):
+        # régression : si tous les fournisseurs échouent (panne réseau), on ne doit PAS
+        # mémoriser « rien avant first_bar » — sinon l'historique ne serait jamais re-téléchargé
+        prov_ok = FakeProvider("ok")
+        self._patch([prov_ok])
+        src.load_data("stock", "FAKE", period="1mo", interval="1d", store=self.store, cfg=self.cfg)
+        head_before = self.store.meta_get("head|stock|FAKE|1d")
+        self._patch([FakeProvider("down", fail=True), FakeProvider("down2", fail=True)])
+        cfg = dict(self.cfg, ttl_seconds={"default": 0, "1d": 0})
+        df = src.load_data("stock", "FAKE", period="max", interval="1d", store=self.store, cfg=cfg)
+        self.assertFalse(df.empty)  # servi depuis le store (mode hors-ligne)
+        # la panne totale ne doit pas écraser la sonde de tête par une sonde depuis 1970
+        head_after = self.store.meta_get("head|stock|FAKE|1d")
+        self.assertEqual(head_after, head_before)
+        # fournisseur réparé : la tête est bien re-téléchargée depuis 1970
+        prov2 = FakeProvider("ok2")
+        self._patch([prov2])
+        src.load_data("stock", "FAKE", period="max", interval="1d", store=self.store, cfg=cfg)
+        heads = [c for c in prov2.calls if c[0] == pd.Timestamp("1970-01-01")]
+        self.assertEqual(len(heads), 1)
+
+    def test_head_probe_recorded_when_provider_answers_empty(self):
+        class Tail(FakeProvider):
+            def fetch(self, source, symbol, start, end, interval, cfg, session=None):
+                self.calls.append((pd.Timestamp(start), pd.Timestamp(end)))
+                return make_df(pd.Timestamp(end) - pd.Timedelta(days=30), pd.Timestamp(end))
+
+        class Empty(FakeProvider):
+            def fetch(self, source, symbol, start, end, interval, cfg, session=None):
+                self.calls.append((pd.Timestamp(start), pd.Timestamp(end)))
+                return pd.DataFrame()  # a répondu : aucune donnée avant first_bar
+
+        self._patch([Tail("tail")])
+        src.load_data("stock", "FAKE", period="1mo", interval="1d", store=self.store, cfg=self.cfg)
+        self._patch([Empty("empty")])
+        cfg = dict(self.cfg, ttl_seconds={"default": 0, "1d": 0})
+        src.load_data("stock", "FAKE", period="max", interval="1d", store=self.store, cfg=cfg)
+        self.assertIsNotNone(self.store.meta_get("head|stock|FAKE|1d"))
+
     def test_bad_interval_raises(self):
         self._patch([FakeProvider()])
         with self.assertRaises(DataError):

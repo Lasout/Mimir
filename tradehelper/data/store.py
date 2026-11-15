@@ -77,16 +77,32 @@ class Store:
         return self.path.parent / "parquet" / f"{source}_{symbol.upper()}_{interval}.parquet"
 
     def _write_parquet(self, df: pd.DataFrame, source: str, symbol: str, interval: str) -> None:
-        """Snapshot Parquet (lecture columnar rapide). Best effort : silencieux si échec."""
+        """Snapshot Parquet (lecture columnar rapide). Best effort : silencieux si échec.
+
+        `df` peut avoir l'index datetime OU une colonne 'ts'."""
         if not self._parquet_ok() or df.empty:
             return
         try:
             out = df.copy()
-            out.index = pd.to_datetime(out.index)
+            if "ts" in out.columns:
+                out["ts"] = pd.to_datetime(out["ts"])
+                out = out.set_index("ts")
+            else:
+                out.index = pd.to_datetime(out.index)
             out.index.name = "ts"
             p = self._pq_path(source, symbol, interval)
             p.parent.mkdir(parents=True, exist_ok=True)
             out.reset_index().to_parquet(p, index=False)
+        except Exception:
+            pass
+
+    def _write_parquet_full(self, source: str, symbol: str, interval: str) -> None:
+        """Réécrit le snapshot Parquet depuis SQLite (complet, pas seulement l'incrément)."""
+        if not self._parquet_ok():
+            return
+        try:
+            df = self._read_sql(source, symbol, interval)
+            self._write_parquet(df, source, symbol, interval)
         except Exception:
             pass
 
@@ -121,26 +137,38 @@ class Store:
                 "INSERT OR REPLACE INTO bars (source, symbol, interval, ts, open, high, low, close, volume)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
             self._conn.commit()
-        self._write_parquet(df, source, symbol, interval)
+        self._write_parquet_full(source, symbol, interval)
         return len(rows)
 
     # ------------------------------------------------------------- lecture
+    def _read_sql(self, source: str, symbol: str, interval: str,
+                  start: pd.Timestamp | None = None, end: pd.Timestamp | None = None) -> pd.DataFrame:
+        """Lecture SQLite directe (source de vérité), avec colonne 'ts'."""
+        q = "SELECT ts, open, high, low, close, volume FROM bars WHERE source=? AND symbol=? AND interval=?"
+        args: list = [source, symbol.upper(), interval]
+        if start is not None:
+            q += " AND ts >= ?"
+            args.append(pd.Timestamp(start).strftime("%Y-%m-%d %H:%M:%S"))
+        if end is not None:
+            q += " AND ts <= ?"
+            args.append(pd.Timestamp(end).strftime("%Y-%m-%d %H:%M:%S"))
+        q += " ORDER BY ts"
+        with self._lock:
+            return pd.read_sql_query(q, self._conn, params=args, parse_dates=["ts"])
+
     def read(self, source: str, symbol: str, interval: str,
              start: pd.Timestamp | None = None, end: pd.Timestamp | None = None) -> pd.DataFrame:
-        # cache Parquet d'abord (lecture columnar) ; SQLite sinon (source de vérité)
+        # cache Parquet d'abord (lecture columnar), avec garde-fou : le snapshot doit
+        # couvrir au moins toutes les lignes SQLite, sinon on retombe sur SQLite
         df = self._read_parquet(source, symbol, interval)
+        if df is not None:
+            try:
+                if len(df) < self.count(source, symbol, interval):
+                    df = None  # snapshot incomplet/périmé -> SQLite
+            except Exception:
+                df = None
         if df is None:
-            q = "SELECT ts, open, high, low, close, volume FROM bars WHERE source=? AND symbol=? AND interval=?"
-            args: list = [source, symbol.upper(), interval]
-            if start is not None:
-                q += " AND ts >= ?"
-                args.append(pd.Timestamp(start).strftime("%Y-%m-%d %H:%M:%S"))
-            if end is not None:
-                q += " AND ts <= ?"
-                args.append(pd.Timestamp(end).strftime("%Y-%m-%d %H:%M:%S"))
-            q += " ORDER BY ts"
-            with self._lock:
-                df = pd.read_sql_query(q, self._conn, params=args, parse_dates=["ts"])
+            df = self._read_sql(source, symbol, interval, start, end)
         if df is None or df.empty:
             return pd.DataFrame(columns=COLUMNS)
         df = df.copy()
