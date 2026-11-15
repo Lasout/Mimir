@@ -15,26 +15,33 @@ import pandas as pd
 
 from ..fees import FeeModel
 from ..strategies import get_strategy
-from .engine import BacktestResult
 from .metrics import compute_metrics
 
 
 @dataclass
 class PortfolioResult:
     equity: pd.Series
-    positions: pd.DataFrame          # parts par actif (0..1)
+    positions: pd.DataFrame  # parts par actif (0..1)
     trades: pd.DataFrame
     metrics: dict
     correlation: pd.DataFrame
     params: dict = field(default_factory=dict)
 
 
-def run_portfolio(dfs: dict[str, pd.DataFrame], strategy_key: str = "ma_cross",
-                  params: dict | None = None, initial_capital: float = 10_000.0,
-                  fee: FeeModel | None = None, commission: float = 0.001,
-                  slippage: float = 0.0005, max_positions: int | None = None,
-                  max_corr: float | None = None, periods_per_year: int = 252) -> PortfolioResult:
+def run_portfolio(
+    dfs: dict[str, pd.DataFrame],
+    strategy_key: str = "ma_cross",
+    params: dict | None = None,
+    initial_capital: float = 10_000.0,
+    fee: FeeModel | None = None,
+    commission: float = 0.001,
+    slippage: float = 0.0005,
+    max_positions: int | None = None,
+    max_corr: float | None = None,
+    periods_per_year: int = 252,
+) -> PortfolioResult:
     from ..fees import FeeModel as _FM
+
     fee = fee if fee is not None else _FM(name="commission %", pct=commission)
     symbols = list(dfs.keys())
     if not symbols:
@@ -46,7 +53,7 @@ def run_portfolio(dfs: dict[str, pd.DataFrame], strategy_key: str = "ma_cross",
         sigs[sym] = get_strategy(strategy_key, **(params or {})).generate(df)["position"]
     # index commun (intersection) et prix
     idx: pd.Index | None = None
-    for sym, df in dfs.items():
+    for df in dfs.values():
         dfi = df.dropna(subset=["Open", "High", "Low", "Close"])
         idx = dfi.index if idx is None else idx.intersection(dfi.index)
     if idx is None:
@@ -85,9 +92,20 @@ def run_portfolio(dfs: dict[str, pd.DataFrame], strategy_key: str = "ma_cross",
                 cash -= delta_val + cost
                 total_fees += cost
                 if shares[s] == 0 and delta_shares != 0:
-                    trades.append({"symbol": s, "entry_time": idx[i], "entry_price": px,
-                                   "exit_time": np.nan, "exit_price": np.nan, "side": "long",
-                                   "pnl": 0.0, "ret": 0.0, "bars": 0, "reason": "Entrée portefeuille"})
+                    trades.append(
+                        {
+                            "symbol": s,
+                            "entry_time": idx[i],
+                            "entry_price": px,
+                            "exit_time": np.nan,
+                            "exit_price": np.nan,
+                            "side": "long",
+                            "pnl": 0.0,
+                            "ret": 0.0,
+                            "bars": 0,
+                            "reason": "Entrée portefeuille",
+                        }
+                    )
                     entry_map = trades[-1]
                     entry_map["_idx"] = len(trades) - 1
                 elif shares[s] != 0 and (shares[s] + delta_shares) == 0:
@@ -109,9 +127,7 @@ def run_portfolio(dfs: dict[str, pd.DataFrame], strategy_key: str = "ma_cross",
             # limite de corrélation : on écarte les actifs trop corrélés aux déjà retenus
             selected: list[str] = []
             for s in active:
-                if not selected:
-                    selected.append(s)
-                elif corr.loc[s, selected].mean() <= max_corr:
+                if not selected or corr.loc[s, selected].mean() <= max_corr:
                     selected.append(s)
             active = selected
         w = 1.0 / len(active) if active else 0.0
@@ -143,11 +159,22 @@ def run_portfolio(dfs: dict[str, pd.DataFrame], strategy_key: str = "ma_cross",
     equity = pd.Series(equity_curve, index=idx, name="equity")
     positions = pd.DataFrame(weights_hist, index=idx, columns=symbols)
     trades_df = pd.DataFrame([{k: v for k, v in t.items() if k != "_idx"} for t in trades])
-    metrics = compute_metrics(equity, trades_df, (positions.sum(axis=1) > 0).astype(int),
-                              periods_per_year=periods_per_year)
+    metrics = compute_metrics(
+        equity, trades_df, (positions.sum(axis=1) > 0).astype(int), periods_per_year=periods_per_year
+    )
     metrics["total_fees"] = total_fees
-    return PortfolioResult(equity=equity, positions=positions, trades=trades_df,
-                           metrics=metrics, correlation=corr,
-                           params={"strategy": strategy_key, "params": params or {},
-                                   "fee": fee.describe(), "initial_capital": initial_capital,
-                                   "max_positions": max_positions, "max_corr": max_corr})
+    return PortfolioResult(
+        equity=equity,
+        positions=positions,
+        trades=trades_df,
+        metrics=metrics,
+        correlation=corr,
+        params={
+            "strategy": strategy_key,
+            "params": params or {},
+            "fee": fee.describe(),
+            "initial_capital": initial_capital,
+            "max_positions": max_positions,
+            "max_corr": max_corr,
+        },
+    )

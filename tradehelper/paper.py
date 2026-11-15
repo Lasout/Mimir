@@ -7,8 +7,6 @@ frais par exécution (Trade Republic FR par défaut), stop/objectif issus du scr
 
 from __future__ import annotations
 
-import datetime as dt
-
 from .data.store import Store, default_store
 from .fees import get_fee_model
 from .timeutil import utcnow_naive
@@ -25,8 +23,7 @@ def _now_str() -> str:
 class PaperPortfolio:
     """Portefeuille fictif persistant. `cash` est stocké dans meta 'paper.cash'."""
 
-    def __init__(self, store: Store | None = None, initial_capital: float = 10_000.0,
-                 max_positions: int = 5):
+    def __init__(self, store: Store | None = None, initial_capital: float = 10_000.0, max_positions: int = 5):
         self.store = store or default_store()
         self.initial_capital = float(initial_capital)
         self.max_positions = max(1, int(max_positions))
@@ -50,11 +47,21 @@ class PaperPortfolio:
         self._persist_cash()
 
     # ------------------------------------------------------------- ordres
-    def open_position(self, symbol: str, source: str, price: float, side: str = "long",
-                      amount: float | None = None, qty: float | None = None,
-                      stop: float | None = None, target: float | None = None,
-                      strategy: str = "", reason: str = "", fee=None,
-                      when: str | None = None) -> dict:
+    def open_position(
+        self,
+        symbol: str,
+        source: str,
+        price: float,
+        side: str = "long",
+        amount: float | None = None,
+        qty: float | None = None,
+        stop: float | None = None,
+        target: float | None = None,
+        strategy: str = "",
+        reason: str = "",
+        fee=None,
+        when: str | None = None,
+    ) -> dict:
         """Ouvre une position. `amount` = montant investi (défaut : part égale de la
         trésorerie) ; `qty` = quantité explicite (prioritaire sur amount)."""
         symbol = symbol.upper()
@@ -82,16 +89,24 @@ class PaperPortfolio:
             if cost > self.cash:
                 raise PaperError("trésorerie insuffisante")
         self.cash -= qty * price + fee.cost(qty * price)
-        pos = {"symbol": symbol, "source": source, "side": side, "qty": qty,
-               "entry_price": float(price), "entry_time": when or _now_str(),
-               "stop": stop, "target": target, "strategy": strategy, "reason": reason,
-               "status": "open"}
+        pos = {
+            "symbol": symbol,
+            "source": source,
+            "side": side,
+            "qty": qty,
+            "entry_price": float(price),
+            "entry_time": when or _now_str(),
+            "stop": stop,
+            "target": target,
+            "strategy": strategy,
+            "reason": reason,
+            "status": "open",
+        }
         pos["id"] = self.store.paper_add(pos)
         self._persist_cash()
         return pos
 
-    def close_position(self, pid: int, price: float, reason: str = "",
-                       fee=None, when: str | None = None) -> dict:
+    def close_position(self, pid: int, price: float, reason: str = "", fee=None, when: str | None = None) -> dict:
         """Clôture une position ouverte (vente à `price`), crédite le cash, calcule le P&L."""
         pos = next((p for p in self.open_positions() if p["id"] == pid), None)
         if pos is None:
@@ -100,15 +115,29 @@ class PaperPortfolio:
         proceeds = pos["qty"] * price
         self.cash += proceeds - fee.cost(proceeds)
         if pos["side"] == "long":
-            pnl = (price - pos["entry_price"]) * pos["qty"] - fee.cost(pos["qty"] * pos["entry_price"]) - fee.cost(proceeds)
+            pnl = (
+                (price - pos["entry_price"]) * pos["qty"]
+                - fee.cost(pos["qty"] * pos["entry_price"])
+                - fee.cost(proceeds)
+            )
         else:  # short
-            pnl = (pos["entry_price"] - price) * pos["qty"] - fee.cost(pos["qty"] * pos["entry_price"]) - fee.cost(proceeds)
-        self.store.paper_update(pid, status="closed", exit_price=float(price),
-                                exit_time=when or _now_str(), pnl=float(pnl),
-                                exit_reason=reason)
+            pnl = (
+                (pos["entry_price"] - price) * pos["qty"]
+                - fee.cost(pos["qty"] * pos["entry_price"])
+                - fee.cost(proceeds)
+            )
+        self.store.paper_update(
+            pid,
+            status="closed",
+            exit_price=float(price),
+            exit_time=when or _now_str(),
+            pnl=float(pnl),
+            exit_reason=reason,
+        )
         self._persist_cash()
-        pos.update(status="closed", exit_price=float(price), exit_time=when or _now_str(),
-                   pnl=float(pnl), exit_reason=reason)
+        pos.update(
+            status="closed", exit_price=float(price), exit_time=when or _now_str(), pnl=float(pnl), exit_reason=reason
+        )
         return pos
 
     def close_symbol(self, symbol: str, price: float, reason: str = "", **kw) -> dict:
@@ -132,8 +161,12 @@ class PaperPortfolio:
             else:
                 latent += (p["entry_price"] - px) * p["qty"]
             equity += v
-        return {"cash": self.cash, "equity": equity, "latent_pnl": latent,
-                "total_return": (equity / self.initial_capital - 1.0) if self.initial_capital else 0.0}
+        return {
+            "cash": self.cash,
+            "equity": equity,
+            "latent_pnl": latent,
+            "total_return": (equity / self.initial_capital - 1.0) if self.initial_capital else 0.0,
+        }
 
     def stats(self, prices: dict[str, float] | None = None) -> dict:
         m = self.mark(prices or {})
@@ -156,7 +189,11 @@ class PaperPortfolio:
         # 1) clôtures : stop / objectif / signal de sortie
         for p in self.open_positions():
             row = by_sym.get(p["symbol"])
-            px = float(row["last_close"]) if row and isinstance(row.get("last_close"), (int, float)) else p["entry_price"]
+            px = (
+                float(row["last_close"])
+                if row and isinstance(row.get("last_close"), (int, float))
+                else p["entry_price"]
+            )
             reason = None
             if row is None:
                 reason = "hors du scan"
@@ -184,10 +221,16 @@ class PaperPortfolio:
             stop = r["stop"] if isinstance(r.get("stop"), (int, float)) else None
             target = r["target"] if isinstance(r.get("target"), (int, float)) else None
             try:
-                pos = self.open_position(sym, source, float(entry), side="long",
-                                         stop=stop, target=target,
-                                         strategy=r.get("best_strategy") or "",
-                                         reason=f"screener: {r.get('label', '')}")
+                pos = self.open_position(
+                    sym,
+                    source,
+                    float(entry),
+                    side="long",
+                    stop=stop,
+                    target=target,
+                    strategy=r.get("best_strategy") or "",
+                    reason=f"screener: {r.get('label', '')}",
+                )
                 opened.append(pos)
             except PaperError as exc:
                 skipped.append(f"{sym} ({exc})")

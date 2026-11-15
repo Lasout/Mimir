@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import os
 
-from .paper import PaperPortfolio, PaperError
+from .paper import PaperError, PaperPortfolio
 
 
 class BrokerError(Exception):
@@ -23,9 +23,17 @@ class BrokerError(Exception):
 class Broker:
     name = "broker"
 
-    def place_order(self, symbol: str, side: str, qty: float, source: str = "stock",
-                    limit_price: float | None = None, confirm: bool = False,
-                    dry_run: bool = True, **kw) -> dict:
+    def place_order(
+        self,
+        symbol: str,
+        side: str,
+        qty: float,
+        source: str = "stock",
+        limit_price: float | None = None,
+        confirm: bool = False,
+        dry_run: bool = True,
+        **kw,
+    ) -> dict:
         raise NotImplementedError
 
     def describe(self) -> str:
@@ -40,26 +48,52 @@ class PaperBroker(Broker):
     def __init__(self, pf: PaperPortfolio):
         self.pf = pf
 
-    def place_order(self, symbol: str, side: str, qty: float, source: str = "stock",
-                    limit_price: float | None = None, confirm: bool = False,
-                    dry_run: bool = True, reason: str = "", **kw) -> dict:
+    def place_order(
+        self,
+        symbol: str,
+        side: str,
+        qty: float,
+        source: str = "stock",
+        limit_price: float | None = None,
+        confirm: bool = False,
+        dry_run: bool = True,
+        reason: str = "",
+        **kw,
+    ) -> dict:
         if not dry_run:
             raise BrokerError("PaperBroker n'envoie jamais d'ordres réels (dry_run requis).")
         price = limit_price or kw.get("price")
         if price is None:
             raise BrokerError("prix requis (limit_price ou price)")
         if side.lower() in ("buy", "long"):
-            pos = self.pf.open_position(symbol, source, float(price), side="long",
-                                        qty=qty, reason=reason or "ordre manuel")
-            return {"broker": self.name, "status": "filled", "symbol": symbol, "side": "long",
-                    "qty": qty, "price": float(price), "position_id": pos["id"], "dry_run": True}
+            pos = self.pf.open_position(
+                symbol, source, float(price), side="long", qty=qty, reason=reason or "ordre manuel"
+            )
+            return {
+                "broker": self.name,
+                "status": "filled",
+                "symbol": symbol,
+                "side": "long",
+                "qty": qty,
+                "price": float(price),
+                "position_id": pos["id"],
+                "dry_run": True,
+            }
         if side.lower() in ("sell", "close", "short"):
             try:
                 pos = self.pf.close_symbol(symbol, float(price), reason=reason or "clôture manuelle")
             except PaperError as exc:
                 raise BrokerError(str(exc)) from exc
-            return {"broker": self.name, "status": "filled", "symbol": symbol, "side": "closed",
-                    "qty": pos["qty"], "price": float(price), "pnl": pos["pnl"], "dry_run": True}
+            return {
+                "broker": self.name,
+                "status": "filled",
+                "symbol": symbol,
+                "side": "closed",
+                "qty": pos["qty"],
+                "price": float(price),
+                "pnl": pos["pnl"],
+                "dry_run": True,
+            }
         raise BrokerError(f"side inconnu: {side}")
 
     def describe(self) -> str:
@@ -75,13 +109,16 @@ class IBKRBroker(Broker):
 
     def __init__(self, cfg: dict | None = None, max_order_notional: float = 1_000.0):
         from .config import load_config
+
         cfg = cfg or load_config()
         self.cfg = cfg
         self.max_order_notional = float(cfg.get("max_order_notional", max_order_notional))
         self.ibkr = cfg.get("ibkr", {})
         if os.environ.get("TRADEHELPER_ALLOW_LIVE_TRADING", "").lower() not in ("1", "true", "oui"):
-            raise BrokerError("Trading live IBKR désactivé : définir TRADEHELPER_ALLOW_LIVE_TRADING=1 "
-                              "(et configurer ibkr host/port/client_id) — mode paper par défaut.")
+            raise BrokerError(
+                "Trading live IBKR désactivé : définir TRADEHELPER_ALLOW_LIVE_TRADING=1 "
+                "(et configurer ibkr host/port/client_id) — mode paper par défaut."
+            )
         if not (self.ibkr.get("host") and self.ibkr.get("port") and self.ibkr.get("client_id")):
             raise BrokerError("Config IBKR incomplète (ibkr.host/port/client_id dans la config).")
         try:
@@ -93,29 +130,52 @@ class IBKRBroker(Broker):
     def connect(self):
         if self._ib is None:
             from ib_insync import IB
+
             self._ib = IB()
             self._ib.connect(self.ibkr["host"], int(self.ibkr["port"]), clientId=int(self.ibkr["client_id"]))
         return self._ib
 
-    def place_order(self, symbol: str, side: str, qty: float, source: str = "stock",
-                    limit_price: float | None = None, confirm: bool = False,
-                    dry_run: bool = True, **kw) -> dict:
+    def place_order(
+        self,
+        symbol: str,
+        side: str,
+        qty: float,
+        source: str = "stock",
+        limit_price: float | None = None,
+        confirm: bool = False,
+        dry_run: bool = True,
+        **kw,
+    ) -> dict:
         notional = abs(qty) * (limit_price or kw.get("price") or 0.0)
         if not confirm:
             raise BrokerError("Ordre live refusé : confirmation explicite requise (confirm=True).")
         if notional > self.max_order_notional:
             raise BrokerError(f"Ordre refusé : notionnel {notional:.2f} > plafond {self.max_order_notional:.2f}.")
         if dry_run:
-            return {"broker": self.name, "status": "dry_run", "symbol": symbol, "side": side,
-                    "qty": qty, "limit_price": limit_price, "notional": notional}
+            return {
+                "broker": self.name,
+                "status": "dry_run",
+                "symbol": symbol,
+                "side": side,
+                "qty": qty,
+                "limit_price": limit_price,
+                "notional": notional,
+            }
         # exécution réelle : jamais atteinte sans toutes les conditions ci-dessus
         ib = self.connect()
-        from ib_insync import Stock, MarketOrder
+        from ib_insync import MarketOrder, Stock
+
         contract = Stock(symbol, "SMART", "USD")
         order = MarketOrder("BUY" if side.lower() in ("buy", "long") else "SELL", qty)
         trade = ib.placeOrder(contract, order)
-        return {"broker": self.name, "status": "submitted", "symbol": symbol, "side": side,
-                "qty": qty, "trade": str(trade)}
+        return {
+            "broker": self.name,
+            "status": "submitted",
+            "symbol": symbol,
+            "side": side,
+            "qty": qty,
+            "trade": str(trade),
+        }
 
     def describe(self) -> str:
         return f"IBKR live (plafond {self.max_order_notional:g} €/ordre, confirmation requise)"

@@ -23,14 +23,23 @@ def _clip(x: float) -> float:
 def fundamental_analysis(symbol: str, source: str = "stock") -> dict:
     """Retourne score [-1, 1], raisons, et données clés. Sans réseau -> vide."""
     if source != "stock":
-        return {"available": False, "score": 0.0, "reasons": ["Analyse fondamentale non disponible pour cette classe d'actifs."], "data": {}}
+        return {
+            "available": False,
+            "score": 0.0,
+            "reasons": ["Analyse fondamentale non disponible pour cette classe d'actifs."],
+            "data": {},
+        }
     from ..data.universe import ETF_LIST
+
     if symbol.upper() in ETF_LIST:
         # ETF = fonds indiciel : pas de fondamental propre (Yahoo renvoie 404) -> on
         # saute tout appel réseau pour éviter le bruit "No fundamentals data found"
-        return {"available": False, "score": 0.0,
-                "reasons": ["Analyse fondamentale non disponible pour un ETF (fonds indiciel)."],
-                "data": {}}
+        return {
+            "available": False,
+            "score": 0.0,
+            "reasons": ["Analyse fondamentale non disponible pour un ETF (fonds indiciel)."],
+            "data": {},
+        }
 
     import yfinance as yf
 
@@ -52,8 +61,12 @@ def fundamental_analysis(symbol: str, source: str = "stock") -> dict:
                 "currentPrice": getattr(fi, "last_price", None),
             }
     except Exception as exc:
-        return {"available": False, "score": 0.0,
-                "reasons": [f"Données fondamentales indisponibles ({exc})."], "data": {}}
+        return {
+            "available": False,
+            "score": 0.0,
+            "reasons": [f"Données fondamentales indisponibles ({exc})."],
+            "data": {},
+        }
 
     pe = _safe(info, "trailingPE")
     sector_pe = _safe(info, "sector PE") or _safe(info, "industryPE")
@@ -68,11 +81,21 @@ def fundamental_analysis(symbol: str, source: str = "stock") -> dict:
     price = _safe(info, "currentPrice") or _safe(info, "regularMarketPrice")
     fwd_pe = _safe(info, "forwardPE")
 
-    data = {"pe": pe, "forward_pe": fwd_pe, "peg": peg, "profit_margin": margin,
-            "operating_margin": op_margin, "revenue_growth": rev_growth,
-            "earnings_growth": earn_growth, "debt_to_equity": debt_eq,
-            "recommendation": rec, "target_mean_price": target, "price": price,
-            "sector": _safe(info, "sector"), "industry": _safe(info, "industry")}
+    data = {
+        "pe": pe,
+        "forward_pe": fwd_pe,
+        "peg": peg,
+        "profit_margin": margin,
+        "operating_margin": op_margin,
+        "revenue_growth": rev_growth,
+        "earnings_growth": earn_growth,
+        "debt_to_equity": debt_eq,
+        "recommendation": rec,
+        "target_mean_price": target,
+        "price": price,
+        "sector": _safe(info, "sector"),
+        "industry": _safe(info, "industry"),
+    }
 
     # Valorisation
     if pe is not None and pe > 0:
@@ -105,8 +128,16 @@ def fundamental_analysis(symbol: str, source: str = "stock") -> dict:
         reasons.append(f"Dette/capitaux propres : {debt_eq:.0f} %.")
 
     # Avis analystes + objectif de cours
-    rec_map = {"strong_buy": 1.0, "buy": 0.6, "outperform": 0.5, "hold": 0.0,
-               "market_perform": 0.0, "underperform": -0.5, "sell": -0.8, "strong_sell": -1.0}
+    rec_map = {
+        "strong_buy": 1.0,
+        "buy": 0.6,
+        "outperform": 0.5,
+        "hold": 0.0,
+        "market_perform": 0.0,
+        "underperform": -0.5,
+        "sell": -0.8,
+        "strong_sell": -1.0,
+    }
     if rec in rec_map:
         scores.append((0.05, rec_map[rec]))
         reasons.append(f"Recommandation médiane des analystes : {rec}.")
@@ -119,6 +150,7 @@ def fundamental_analysis(symbol: str, source: str = "stock") -> dict:
     # mises en cache dans le store, jamais bloquantes en cas d'échec réseau.
     try:
         from .advanced import advanced_fundamental
+
         adv = advanced_fundamental(symbol, source=source)
         if adv.get("available"):
             for w, s in adv["components"]:
@@ -129,8 +161,12 @@ def fundamental_analysis(symbol: str, source: str = "stock") -> dict:
         pass
 
     if not scores:
-        return {"available": False, "score": 0.0,
-                "reasons": ["Données fondamentales insuffisantes pour ce titre."], "data": data}
+        return {
+            "available": False,
+            "score": 0.0,
+            "reasons": ["Données fondamentales insuffisantes pour ce titre."],
+            "data": data,
+        }
 
     total_w = sum(w for w, _ in scores)
     score = sum(w * s for w, s in scores) / total_w if total_w > 0 else 0.0

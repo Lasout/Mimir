@@ -27,10 +27,17 @@ CRYPTO_INTERVALS = {"1d", "12h", "8h", "4h", "2h", "1h", "30m", "15m", "5m"}
 PERIOD_TO_DAYS = {"1mo": 30, "3mo": 92, "6mo": 183, "1y": 365, "2y": 730, "5y": 1826, "max": None}
 
 INTERVAL_TIMEDELTA = {
-    "1d": pd.Timedelta(days=1), "1wk": pd.Timedelta(weeks=1), "1mo": pd.Timedelta(days=30),
-    "12h": pd.Timedelta(hours=12), "8h": pd.Timedelta(hours=8), "4h": pd.Timedelta(hours=4),
-    "2h": pd.Timedelta(hours=2), "1h": pd.Timedelta(hours=1), "30m": pd.Timedelta(minutes=30),
-    "15m": pd.Timedelta(minutes=15), "5m": pd.Timedelta(minutes=5),
+    "1d": pd.Timedelta(days=1),
+    "1wk": pd.Timedelta(weeks=1),
+    "1mo": pd.Timedelta(days=30),
+    "12h": pd.Timedelta(hours=12),
+    "8h": pd.Timedelta(hours=8),
+    "4h": pd.Timedelta(hours=4),
+    "2h": pd.Timedelta(hours=2),
+    "1h": pd.Timedelta(hours=1),
+    "30m": pd.Timedelta(minutes=30),
+    "15m": pd.Timedelta(minutes=15),
+    "5m": pd.Timedelta(minutes=5),
 }
 
 
@@ -51,8 +58,14 @@ def _period_range(period: str, end: pd.Timestamp) -> tuple[pd.Timestamp, pd.Time
     return end - pd.Timedelta(days=days), end
 
 
-def load_data(source: str, symbol: str, period: str = "1y", interval: str = "1d",
-              store: Store | None = None, cfg: dict | None = None) -> pd.DataFrame:
+def load_data(
+    source: str,
+    symbol: str,
+    period: str = "1y",
+    interval: str = "1d",
+    store: Store | None = None,
+    cfg: dict | None = None,
+) -> pd.DataFrame:
     """Retourne les barres OHLCV de [période] pour un actif, via le store + fournisseurs."""
     source = source.lower()
     if source not in SOURCE_LABELS:
@@ -91,19 +104,24 @@ def load_data(source: str, symbol: str, period: str = "1y", interval: str = "1d"
     last_bar = store.last_ts(source, symbol, interval)
 
     # la queue est "fraîche" si on a téléchargé récemment et qu'elle couvre jusqu'à aujourd'hui
-    tail_fresh = (last_fetch is not None
-                  and (now - pd.Timestamp(last_fetch)).total_seconds() < ttl
-                  and last_bar is not None
-                  and last_bar >= now.normalize() - bar)
+    tail_fresh = (
+        last_fetch is not None
+        and (now - pd.Timestamp(last_fetch)).total_seconds() < ttl
+        and last_bar is not None
+        and last_bar >= now.normalize() - bar
+    )
     # la tête couvre la plage demandée (tolérance de 2 barres pour les week-ends),
     # ou a déjà été sondée récemment sans rien trouver avant la première barre connue
     head_meta = store.meta_get(head_key) or {}
     probed_at = pd.Timestamp(head_meta["probed_at"]) if head_meta.get("probed_at") else None
     probe_start = pd.Timestamp(head_meta["probe_start"]) if head_meta.get("probe_start") else None
-    head_probed = (probed_at is not None
-                   and (now - probed_at).total_seconds() < 24 * 3600
-                   and probe_start is not None and probe_start <= start + 2 * bar
-                   and head_meta.get("first_available") == (first_bar.isoformat() if first_bar else "none"))
+    head_probed = (
+        probed_at is not None
+        and (now - probed_at).total_seconds() < 24 * 3600
+        and probe_start is not None
+        and probe_start <= start + 2 * bar
+        and head_meta.get("first_available") == (first_bar.isoformat() if first_bar else "none")
+    )
     head_covered = head_probed or (first_bar is not None and first_bar <= start + 2 * bar)
     if not stored.empty and head_covered and tail_fresh:
         return stored
@@ -133,10 +151,14 @@ def load_data(source: str, symbol: str, period: str = "1y", interval: str = "1d"
                     store.meta_set(meta_key, utcnow_naive().isoformat())
                     if is_head:
                         new_first = store.first_ts(source, symbol, interval)
-                        store.meta_set(head_key, {
-                            "probed_at": utcnow_naive().isoformat(),
-                            "probe_start": pd.Timestamp(rstart).isoformat(),
-                            "first_available": new_first.isoformat() if new_first else "none"})
+                        store.meta_set(
+                            head_key,
+                            {
+                                "probed_at": utcnow_naive().isoformat(),
+                                "probe_start": pd.Timestamp(rstart).isoformat(),
+                                "first_available": new_first.isoformat() if new_first else "none",
+                            },
+                        )
                     break
             except Exception as exc:
                 errors.append(f"{provider.name}: {exc}")
@@ -144,25 +166,35 @@ def load_data(source: str, symbol: str, period: str = "1y", interval: str = "1d"
             # on ne mémorise « rien avant first_bar » que si un fournisseur a VRAIMENT
             # répondu vide ; si tous ont échoué (réseau...), on retentera plus tard
             if is_head and responded:
-                store.meta_set(head_key, {"probed_at": utcnow_naive().isoformat(),
-                                          "probe_start": pd.Timestamp(rstart).isoformat(),
-                                          "first_available": first_bar.isoformat() if first_bar else "none"})
+                store.meta_set(
+                    head_key,
+                    {
+                        "probed_at": utcnow_naive().isoformat(),
+                        "probe_start": pd.Timestamp(rstart).isoformat(),
+                        "first_available": first_bar.isoformat() if first_bar else "none",
+                    },
+                )
     # si tout a échoué mais que le store contient des données -> on sert le store (mode hors-ligne)
 
     out = store.read(source, symbol, interval, start, end)
     if out.empty:
-        raise DataError(f"Téléchargement impossible pour {symbol} ({source}, {interval}, {period}): "
-                        + "; ".join(errors or ["aucune donnée"]))
+        raise DataError(
+            f"Téléchargement impossible pour {symbol} ({source}, {interval}, {period}): "
+            + "; ".join(errors or ["aucune donnée"])
+        )
     return normalize(out)
 
 
-def data_range(source: str, symbol: str, interval: str = "1d",
-               store: Store | None = None) -> tuple[pd.Timestamp | None, pd.Timestamp | None, int]:
+def data_range(
+    source: str, symbol: str, interval: str = "1d", store: Store | None = None
+) -> tuple[pd.Timestamp | None, pd.Timestamp | None, int]:
     """Plage réellement stockée (pour l'affichage) : (début, fin, nb barres)."""
     store = store or default_store()
-    return (store.first_ts(source, symbol.upper(), interval),
-            store.last_ts(source, symbol.upper(), interval),
-            store.count(source, symbol.upper(), interval))
+    return (
+        store.first_ts(source, symbol.upper(), interval),
+        store.last_ts(source, symbol.upper(), interval),
+        store.count(source, symbol.upper(), interval),
+    )
 
 
 # --- wrappers de compatibilité -------------------------------------------

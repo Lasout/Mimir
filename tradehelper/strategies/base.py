@@ -31,17 +31,21 @@ class Strategy:
     # --- utilitaires -----------------------------------------------------
     @staticmethod
     def _empty_signals(df: pd.DataFrame) -> pd.DataFrame:
-        return pd.DataFrame({
-            "position": 0,
-            "stop": float("nan"),
-            "target": float("nan"),
-            "reason": "",
-        }, index=df.index)
+        return pd.DataFrame(
+            {
+                "position": 0,
+                "stop": float("nan"),
+                "target": float("nan"),
+                "reason": "",
+            },
+            index=df.index,
+        )
 
     @staticmethod
     def _atr_trailing_stop(df: pd.DataFrame, mult: float, direction: int) -> pd.Series:
         """Stop suiveur de type chandelier : close -/+ mult * ATR."""
         from ..indicators import atr
+
         a = atr(df, 14) * mult
         if direction > 0:
             return df["Close"] - a

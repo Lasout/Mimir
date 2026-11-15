@@ -1,5 +1,8 @@
 # tradeHelper
 
+[![CI](https://github.com/Lasout/Mimir/actions/workflows/ci.yml/badge.svg)](https://github.com/Lasout/Mimir/actions/workflows/ci.yml)
+[![Release](https://github.com/Lasout/Mimir/actions/workflows/release.yml/badge.svg)](https://github.com/Lasout/Mimir/actions/workflows/release.yml)
+
 > Pour les agents qui reprennent le projet : lire d'abord [`AGENTS.md`](AGENTS.md)
 > (architecture, règles, commandes). La feuille de route est dans [`ROADMAP.md`](ROADMAP.md).
 
@@ -164,8 +167,9 @@ df = add_all(load_data("stock", "AAPL", period="1y", interval="1d"))
 print(advise(df, "AAPL", source="stock")["label"])
 
 sig = get_strategy("ma_cross", fast=12, slow=26).generate(df)
-res = run_backtest(df, sig, initial_capital=10_000, commission=0.001, slippage=0.0005,
-                   periods_per_year=periods_per_year("1d", "stock"))
+res = run_backtest(
+    df, sig, initial_capital=10_000, commission=0.001, slippage=0.0005, periods_per_year=periods_per_year("1d", "stock")
+)
 print(res.metrics)
 ```
 

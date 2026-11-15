@@ -3,9 +3,9 @@ import unittest
 import numpy as np
 import pandas as pd
 
+from tests.helpers import make_ohlcv
 from tradehelper.backtest import run_backtest
 from tradehelper.fees import FeeModel
-from tests.helpers import make_ohlcv
 
 
 def long_signals(df, start=0):
@@ -25,8 +25,7 @@ class TestFeesInEngine(unittest.TestCase):
         self.assertAlmostEqual(zero.metrics["total_fees"], 0.0, places=6)
         self.assertAlmostEqual(flat1.metrics["total_fees"], 2.0, places=6)
         self.assertGreater(zero.metrics["total_return"], flat1.metrics["total_return"])
-        self.assertAlmostEqual(zero.metrics["total_return"] - flat1.metrics["total_return"],
-                               2.0 / 10_000, places=6)
+        self.assertAlmostEqual(zero.metrics["total_return"] - flat1.metrics["total_return"], 2.0 / 10_000, places=6)
 
     def test_legacy_commission_still_works(self):
         df = make_ohlcv(n=80, drift=0.004, vol=0.005, seed=1)
@@ -38,8 +37,9 @@ class TestFeesInEngine(unittest.TestCase):
         df = make_ohlcv(n=80, drift=0.004, vol=0.005, seed=1)
         sig = long_signals(df, start=5)
         # petits ordres : le min de 1 € s'applique au moins à l'exécution d'entrée
-        res = run_backtest(df, sig, initial_capital=100.0,
-                           fee=FeeModel("TR crypto", pct=0.01, min_fee=1.0), slippage=0.0)
+        res = run_backtest(
+            df, sig, initial_capital=100.0, fee=FeeModel("TR crypto", pct=0.01, min_fee=1.0), slippage=0.0
+        )
         self.assertGreaterEqual(res.metrics["total_fees"], 2.0 - 1e-9)
 
 
@@ -59,8 +59,7 @@ class TestVolTarget(unittest.TestCase):
         df = make_ohlcv(n=150, drift=0.003, vol=0.05, seed=3)
         sig = long_signals(df, start=10)
         base = run_backtest(df, sig, fee=FeeModel("zero"), slippage=0.0)
-        vt = run_backtest(df, sig, fee=FeeModel("zero"), slippage=0.0, vol_target=0.10,
-                          periods_per_year=252)
+        vt = run_backtest(df, sig, fee=FeeModel("zero"), slippage=0.0, vol_target=0.10, periods_per_year=252)
         self.assertLess(abs(vt.metrics["total_return"]), abs(base.metrics["total_return"]) * 1.5 + 1e-9)
 
 
@@ -72,8 +71,9 @@ class TestMaxDrawdownStop(unittest.TestCase):
         down = np.linspace(150, 60, 60)
         close = np.concatenate([up, down])
         idx = pd.bdate_range("2025-01-01", periods=n)
-        df = pd.DataFrame({"Open": close, "High": close * 1.01, "Low": close * 0.99,
-                           "Close": close, "Volume": 1e6}, index=idx)
+        df = pd.DataFrame(
+            {"Open": close, "High": close * 1.01, "Low": close * 0.99, "Close": close, "Volume": 1e6}, index=idx
+        )
         sig = long_signals(df, start=5)
         res = run_backtest(df, sig, fee=FeeModel("zero"), slippage=0.0, max_drawdown_stop=0.10)
         # le stop se déclenche à la clôture de la barre qui franchit -10 % : on autorise

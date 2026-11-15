@@ -43,7 +43,7 @@ def yahoo_symbol(source: str, symbol: str) -> str:
     if source == "crypto":
         for quote in ("USDT", "USDC", "BUSD", "USD"):
             if symbol.endswith(quote) and len(symbol) > len(quote):
-                return f"{symbol[:-len(quote)]}-{quote if quote != 'USDT' else 'USD'}"
+                return f"{symbol[: -len(quote)]}-{quote if quote != 'USDT' else 'USD'}"
         return f"{symbol}-USD"
     if source == "forex":
         return f"{symbol}=X" if len(symbol) == 6 else symbol
@@ -56,9 +56,11 @@ class YahooProvider:
     def supports(self, source: str, interval: str) -> bool:
         return source in ("stock", "crypto", "forex")
 
-    def fetch(self, source: str, symbol: str, start: pd.Timestamp, end: pd.Timestamp,
-              interval: str, cfg: dict) -> pd.DataFrame:
+    def fetch(
+        self, source: str, symbol: str, start: pd.Timestamp, end: pd.Timestamp, interval: str, cfg: dict
+    ) -> pd.DataFrame:
         import yfinance as yf
+
         ysym = yahoo_symbol(source, symbol)
         kwargs = {"interval": interval, "auto_adjust": bool(cfg.get("adjust_prices", False))}
         # Yahoo limite l'historique intraday : au-delà d'un certain âge, on demande "max"
@@ -75,14 +77,24 @@ class YahooProvider:
 
 class BinanceProvider:
     name = "binance"
-    INTERVAL_SECONDS = {"1d": 86400, "12h": 43200, "8h": 28800, "4h": 14400, "2h": 7200,
-                        "1h": 3600, "30m": 1800, "15m": 900, "5m": 300}
+    INTERVAL_SECONDS = {
+        "1d": 86400,
+        "12h": 43200,
+        "8h": 28800,
+        "4h": 14400,
+        "2h": 7200,
+        "1h": 3600,
+        "30m": 1800,
+        "15m": 900,
+        "5m": 300,
+    }
 
     def supports(self, source: str, interval: str) -> bool:
         return source == "crypto" and interval in self.INTERVAL_SECONDS
 
-    def fetch(self, source: str, symbol: str, start: pd.Timestamp, end: pd.Timestamp,
-              interval: str, cfg: dict, session=None) -> pd.DataFrame:
+    def fetch(
+        self, source: str, symbol: str, start: pd.Timestamp, end: pd.Timestamp, interval: str, cfg: dict, session=None
+    ) -> pd.DataFrame:
         seconds = self.INTERVAL_SECONDS[interval]
         max_bars = int(cfg.get("max_bars_per_fetch", 100_000))
         timeout = cfg.get("request_timeout", 20)
@@ -96,10 +108,17 @@ class BinanceProvider:
         pages = 0
         while cursor < end_ms and len(rows) < max_bars and pages < 500:
             limit = min(BINANCE_BARS_PER_CALL, max_bars - len(rows))
-            resp = session.get("https://api.binance.com/api/v3/klines",
-                               params={"symbol": symbol.upper(), "interval": interval,
-                                       "startTime": cursor, "endTime": end_ms,
-                                       "limit": limit}, timeout=timeout)
+            resp = session.get(
+                "https://api.binance.com/api/v3/klines",
+                params={
+                    "symbol": symbol.upper(),
+                    "interval": interval,
+                    "startTime": cursor,
+                    "endTime": end_ms,
+                    "limit": limit,
+                },
+                timeout=timeout,
+            )
             resp.raise_for_status()
             batch = resp.json()
             if not batch:
@@ -112,9 +131,23 @@ class BinanceProvider:
         rows = rows[:max_bars]
         if not rows:
             raise DataError(f"Binance: aucune donnée pour {symbol}")
-        df = pd.DataFrame(rows, columns=[
-            "open_time", "Open", "High", "Low", "Close", "Volume", "close_time",
-            "qav", "n", "tbb", "tbq", "ignore"])
+        df = pd.DataFrame(
+            rows,
+            columns=[
+                "open_time",
+                "Open",
+                "High",
+                "Low",
+                "Close",
+                "Volume",
+                "close_time",
+                "qav",
+                "n",
+                "tbb",
+                "tbq",
+                "ignore",
+            ],
+        )
         df.index = pd.to_datetime(df["open_time"], unit="ms")
         for col in ("Open", "High", "Low", "Close", "Volume"):
             df[col] = pd.to_numeric(df[col])
@@ -127,8 +160,9 @@ class FrankfurterProvider:
     def supports(self, source: str, interval: str) -> bool:
         return source == "forex" and interval == "1d"
 
-    def fetch(self, source: str, symbol: str, start: pd.Timestamp, end: pd.Timestamp,
-              interval: str, cfg: dict) -> pd.DataFrame:
+    def fetch(
+        self, source: str, symbol: str, start: pd.Timestamp, end: pd.Timestamp, interval: str, cfg: dict
+    ) -> pd.DataFrame:
         pair = symbol.upper()
         if len(pair) != 6:
             raise DataError(f"Paire forex invalide: {pair}")
@@ -136,8 +170,7 @@ class FrankfurterProvider:
         session = requests.Session()
         session.headers.update({"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) tradeHelper/0.1"})
         url = f"https://api.frankfurter.dev/v1/{pd.Timestamp(start).date()}..{pd.Timestamp(end).date()}"
-        resp = session.get(url, params={"base": base, "symbols": quote},
-                           timeout=cfg.get("request_timeout", 20))
+        resp = session.get(url, params={"base": base, "symbols": quote}, timeout=cfg.get("request_timeout", 20))
         resp.raise_for_status()
         rates = resp.json().get("rates", {})
         if not rates:
@@ -145,8 +178,7 @@ class FrankfurterProvider:
         idx = pd.to_datetime(sorted(rates.keys()))
         close = pd.Series([rates[str(d.date())][quote] for d in idx], index=idx, dtype=float)
         # le Frankfurter ne fournit que la clôture : barre synthétique O=H=L=C
-        return normalize(pd.DataFrame({"Open": close, "High": close, "Low": close,
-                                       "Close": close, "Volume": np.nan}))
+        return normalize(pd.DataFrame({"Open": close, "High": close, "Low": close, "Close": close, "Volume": np.nan}))
 
 
 class AlphaVantageProvider:
@@ -161,34 +193,50 @@ class AlphaVantageProvider:
     def supports(self, source: str, interval: str) -> bool:
         return bool(self.api_key) and source == "stock" and interval in self.DAILY_INTERVALS
 
-    def fetch(self, source: str, symbol: str, start: pd.Timestamp, end: pd.Timestamp,
-              interval: str, cfg: dict) -> pd.DataFrame:
+    def fetch(
+        self, source: str, symbol: str, start: pd.Timestamp, end: pd.Timestamp, interval: str, cfg: dict
+    ) -> pd.DataFrame:
         if not self.api_key:
             raise DataError("Alpha Vantage: pas de clé API")
         session = requests.Session()
-        resp = session.get("https://www.alphavantage.co/query",
-                           params={"function": "TIME_SERIES_DAILY", "symbol": symbol.upper(),
-                                   "outputsize": "full", "apikey": self.api_key},
-                           timeout=cfg.get("request_timeout", 20))
+        resp = session.get(
+            "https://www.alphavantage.co/query",
+            params={
+                "function": "TIME_SERIES_DAILY",
+                "symbol": symbol.upper(),
+                "outputsize": "full",
+                "apikey": self.api_key,
+            },
+            timeout=cfg.get("request_timeout", 20),
+        )
         resp.raise_for_status()
         payload = resp.json().get("Time Series (Daily)")
         if not payload:
             raise DataError(f"Alpha Vantage: pas de série pour {symbol}")
         idx = pd.to_datetime(sorted(payload.keys()))
-        df = pd.DataFrame({
-            "Open": [float(payload[d]["1. open"]) for d in idx],
-            "High": [float(payload[d]["2. high"]) for d in idx],
-            "Low": [float(payload[d]["3. low"]) for d in idx],
-            "Close": [float(payload[d]["4. close"]) for d in idx],
-            "Volume": [float(payload[d]["5. volume"]) for d in idx],
-        }, index=idx)
+        df = pd.DataFrame(
+            {
+                "Open": [float(payload[d]["1. open"]) for d in idx],
+                "High": [float(payload[d]["2. high"]) for d in idx],
+                "Low": [float(payload[d]["3. low"]) for d in idx],
+                "Close": [float(payload[d]["4. close"]) for d in idx],
+                "Volume": [float(payload[d]["5. volume"]) for d in idx],
+            },
+            index=idx,
+        )
         # agrégation hebdo/mensuelle si demandée
         if interval == "1wk":
-            df = df.resample("W-FRI").agg({"Open": "first", "High": "max", "Low": "min",
-                                            "Close": "last", "Volume": "sum"}).dropna()
+            df = (
+                df.resample("W-FRI")
+                .agg({"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"})
+                .dropna()
+            )
         elif interval == "1mo":
-            df = df.resample("ME").agg({"Open": "first", "High": "max", "Low": "min",
-                                        "Close": "last", "Volume": "sum"}).dropna()
+            df = (
+                df.resample("ME")
+                .agg({"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"})
+                .dropna()
+            )
         return normalize(df)
 
 

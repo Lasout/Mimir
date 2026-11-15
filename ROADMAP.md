@@ -3,18 +3,27 @@
 Feuille de route de développement. Les cases cochées sont faites.
 Contexte projet pour agents : voir [`AGENTS.md`](AGENTS.md).
 
-## P0 — fondations (fait / à finaliser)
+## P0 — fondations (fait)
 
 - [x] Dépôt git initialisé à la racine (`main`, commit initial, `.gitignore`)
-- [ ] Ajouter un remote (GitHub/GitLab) et protéger `main` — **ne push que sur autorisation**
-- [ ] CI/CD GitHub Actions : lint (`ruff`), tests unitaires sur chaque push/PR,
-      matrice de versions Python (3.11–3.15), badge de build dans le README
-- [ ] Hooks pre-commit (ruff, trailing whitespace, pas de secrets en dur)
+- [x] Remote GitHub privé ajouté : `origin` = `git@github.com:Lasout/Mimir.git`.
+      **Push sur autorisation uniquement** — depuis une machine avec des credentials GitHub :
+      `git push -u origin main` (le sandbox n'a pas de token gh/SSH GitHub).
+      Protection de `main` à activer côté GitHub : Settings → Branches → Add rule
+      (`main`, require PR + status checks CI + no force push)
+- [x] CI/CD GitHub Actions (`.github/workflows/ci.yml`) : lint `ruff` (check + format),
+      tests pytest + couverture sur chaque push/PR, matrice Python 3.11–3.15,
+      mypy strict, gitleaks ; badges dans le README. `network.yml` (tests réseau, manuel),
+      `release.yml` (tags `v*`)
+- [x] Hooks pre-commit (`.pre-commit-config.yaml`) : ruff check --fix + ruff-format,
+      trailing-whitespace, end-of-file, check-yaml, detect-secrets (baseline
+      `.secrets.baseline`) — `pre-commit run --all-files` : tous les hooks passent
 - [x] Tri asc/desc des colonnes du screener (clic sur l'en-tête) — étendre au tableau des trades
-- [ ] Migrer les tests vers `pytest` + couverture (`pytest-cov`, objectif > 80 % sur
-      `indicators`, `backtest`, `strategies`, `screener`)
-- [ ] `pyproject.toml` + packaging pip installable (`pip install .`), puis exécutable
-      autonome via PyInstaller
+- [x] Tests sous `pytest` + `pytest-cov` (config `pyproject.toml`) : **93 %** de couverture
+      sur `indicators`, `backtest`, `strategies`, `screener` (objectif > 80 %, CI
+      `--cov-fail-under=80`) ; la suite reste compatible `unittest discover`
+- [x] `pyproject.toml` + packaging pip installable (`pip install .` → `tradehelper-gui`),
+      exécutable autonome via PyInstaller (`packaging/tradehelper.spec`)
 
 ## P1 — données : historique plus long et persistant (fait)
 

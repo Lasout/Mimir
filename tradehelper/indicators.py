@@ -37,21 +37,26 @@ def macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> p
 def bollinger_bands(close: pd.Series, window: int = 20, num_std: float = 2.0) -> pd.DataFrame:
     mid = sma(close, window)
     std = close.rolling(window=window, min_periods=window).std(ddof=0)
-    return pd.DataFrame({
-        "middle": mid,
-        "upper": mid + num_std * std,
-        "lower": mid - num_std * std,
-        "pct_b": (close - (mid - num_std * std)) / ((mid + num_std * std) - (mid - num_std * std)),
-    })
+    return pd.DataFrame(
+        {
+            "middle": mid,
+            "upper": mid + num_std * std,
+            "lower": mid - num_std * std,
+            "pct_b": (close - (mid - num_std * std)) / ((mid + num_std * std) - (mid - num_std * std)),
+        }
+    )
 
 
 def true_range(df: pd.DataFrame) -> pd.Series:
     prev_close = df["Close"].shift(1)
-    tr = pd.concat([
-        df["High"] - df["Low"],
-        (df["High"] - prev_close).abs(),
-        (df["Low"] - prev_close).abs(),
-    ], axis=1).max(axis=1)
+    tr = pd.concat(
+        [
+            df["High"] - df["Low"],
+            (df["High"] - prev_close).abs(),
+            (df["Low"] - prev_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
     return tr
 
 
@@ -75,12 +80,17 @@ def adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
 
 
 def donchian(df: pd.DataFrame, window: int = 20) -> pd.DataFrame:
-    return pd.DataFrame({
-        "upper": df["High"].rolling(window=window, min_periods=window).max(),
-        "lower": df["Low"].rolling(window=window, min_periods=window).min(),
-        "middle": (df["High"].rolling(window=window, min_periods=window).max()
-                   + df["Low"].rolling(window=window, min_periods=window).min()) / 2.0,
-    })
+    return pd.DataFrame(
+        {
+            "upper": df["High"].rolling(window=window, min_periods=window).max(),
+            "lower": df["Low"].rolling(window=window, min_periods=window).min(),
+            "middle": (
+                df["High"].rolling(window=window, min_periods=window).max()
+                + df["Low"].rolling(window=window, min_periods=window).min()
+            )
+            / 2.0,
+        }
+    )
 
 
 def obv(df: pd.DataFrame) -> pd.Series:

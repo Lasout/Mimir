@@ -4,9 +4,9 @@ import numpy as np
 import pandas as pd
 
 import tradehelper.screener as screener_mod
+from tests.helpers import make_ohlcv
 from tradehelper.indicators import add_all
 from tradehelper.screener import format_horizon, recommend, screen_assets
-from tests.helpers import make_ohlcv, make_trend_reversal
 
 
 def _stable_seed(symbol: str) -> int:
@@ -17,6 +17,7 @@ def fake_load_data_factory():
     def fake(source, symbol, period="1y", interval="1d"):
         drift = 0.005 if symbol == "UP" else -0.004
         return make_ohlcv(n=200, drift=drift, vol=0.01, seed=_stable_seed(symbol))
+
     return fake
 
 
@@ -30,8 +31,7 @@ class TestHorizon(unittest.TestCase):
 class TestRecommend(unittest.TestCase):
     def test_levels_coherent(self):
         df = add_all(make_ohlcv(n=120, drift=0.004, seed=3))
-        sig = pd.DataFrame({"position": 1, "stop": np.nan, "target": np.nan, "reason": ""},
-                           index=df.index)
+        sig = pd.DataFrame({"position": 1, "stop": np.nan, "target": np.nan, "reason": ""}, index=df.index)
         rec = recommend(df, sig, {"avg_bars": 8.0}, "1d")
         self.assertEqual(rec["position"], "ACHAT")
         self.assertLess(rec["stop"], rec["entry"])
@@ -40,8 +40,7 @@ class TestRecommend(unittest.TestCase):
 
     def test_flat_position(self):
         df = add_all(make_ohlcv(n=120))
-        sig = pd.DataFrame({"position": 0, "stop": np.nan, "target": np.nan, "reason": ""},
-                           index=df.index)
+        sig = pd.DataFrame({"position": 0, "stop": np.nan, "target": np.nan, "reason": ""}, index=df.index)
         rec = recommend(df, sig, {"avg_bars": 5.0}, "1d")
         self.assertEqual(rec["position"], "ATTENTE")
 
@@ -59,12 +58,25 @@ class TestScreenAssets(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         for r in rows:
             self.assertIsNone(r["error"])
-            for key in ("symbol", "type", "score", "label", "best_strategy", "sharpe",
-                        "position", "entry", "stop", "target", "horizon", "n_trades"):
+            for key in (
+                "symbol",
+                "type",
+                "score",
+                "label",
+                "best_strategy",
+                "sharpe",
+                "position",
+                "entry",
+                "stop",
+                "target",
+                "horizon",
+                "n_trades",
+            ):
                 self.assertIn(key, r)
-            self.assertIn(r["best_strategy"],
-                          {"ma_cross", "rsi_reversion", "donchian_breakout", "macd_momentum",
-                           "adaptive_regime", "ml_signal"})
+            self.assertIn(
+                r["best_strategy"],
+                {"ma_cross", "rsi_reversion", "donchian_breakout", "macd_momentum", "adaptive_regime", "ml_signal"},
+            )
             self.assertIn(r["position"], {"ACHAT", "ATTENTE", "SHORT"})
             self.assertLess(r["stop"], r["entry"])
             self.assertGreater(r["target"], r["entry"])
@@ -82,6 +94,7 @@ class TestScreenAssets(unittest.TestCase):
     def test_error_row(self):
         def boom(source, symbol, period="1y", interval="1d"):
             raise ValueError("pas de données")
+
         screener_mod.load_data = boom
         rows = screen_assets("crypto", ["XXX"], period="1y", interval="1d", workers=1)
         self.assertEqual(len(rows), 1)
@@ -90,8 +103,7 @@ class TestScreenAssets(unittest.TestCase):
         self.assertEqual(rows[0]["type"], "Crypto")
 
     def test_type_column_stock_etf(self):
-        rows = screen_assets("stock", ["SPY", "AAPL"], period="1y", interval="1d",
-                             strategies=["ma_cross"], workers=1)
+        rows = screen_assets("stock", ["SPY", "AAPL"], period="1y", interval="1d", strategies=["ma_cross"], workers=1)
         types = {r["symbol"]: r["type"] for r in rows}
         self.assertEqual(types["SPY"], "ETF")
         self.assertEqual(types["AAPL"], "Action")
@@ -99,11 +111,17 @@ class TestScreenAssets(unittest.TestCase):
     def test_progress_callback_par_strategie(self):
         # la progression est par stratégie : n = nb symboles × nb stratégies, monotone
         calls = []
-        screen_assets("crypto", ["UP", "DOWN"], period="1y", interval="1d", workers=1,
-                      strategies=["ma_cross", "rsi_reversion"],
-                      on_progress=lambda i, n, s, p="": calls.append((i, n, s, p)))
+        screen_assets(
+            "crypto",
+            ["UP", "DOWN"],
+            period="1y",
+            interval="1d",
+            workers=1,
+            strategies=["ma_cross", "rsi_reversion"],
+            on_progress=lambda i, n, s, p="": calls.append((i, n, s, p)),
+        )
         steps = [c for c in calls if c[3].startswith("backtest")]
-        self.assertEqual(len(steps), 4)          # 2 symboles × 2 stratégies
+        self.assertEqual(len(steps), 4)  # 2 symboles × 2 stratégies
         self.assertTrue(all(n == 4 for _, n, _, _ in steps))
         self.assertEqual([i for i, _, _, _ in steps], [1, 2, 3, 4])  # monotone jusqu'au total
 
@@ -111,9 +129,15 @@ class TestScreenAssets(unittest.TestCase):
         # des messages de phase (sans compter) rendent visible ce qui se passe
         # entre deux backtests : chargement, indicateurs+avis, backtest k/N
         calls = []
-        screen_assets("crypto", ["UP"], period="1y", interval="1d", workers=1,
-                      strategies=["ma_cross", "rsi_reversion"],
-                      on_progress=lambda i, n, s, p="": calls.append((i, n, s, p)))
+        screen_assets(
+            "crypto",
+            ["UP"],
+            period="1y",
+            interval="1d",
+            workers=1,
+            strategies=["ma_cross", "rsi_reversion"],
+            on_progress=lambda i, n, s, p="": calls.append((i, n, s, p)),
+        )
         phases = [p for _, _, _, p in calls]
         self.assertIn("chargement des données", phases)
         self.assertIn("indicateurs + avis", phases)
@@ -129,11 +153,18 @@ class TestScreenAssets(unittest.TestCase):
             if symbol == "KO":
                 raise ValueError("pas de données")
             return make_ohlcv(n=200, drift=0.004, seed=5)
+
         screener_mod.load_data = boom
         calls = []
-        rows = screen_assets("crypto", ["KO", "UP"], period="1y", interval="1d", workers=1,
-                             strategies=["ma_cross"],
-                             on_progress=lambda i, n, s, p="": calls.append((i, n, s, p)))
+        rows = screen_assets(
+            "crypto",
+            ["KO", "UP"],
+            period="1y",
+            interval="1d",
+            workers=1,
+            strategies=["ma_cross"],
+            on_progress=lambda i, n, s, p="": calls.append((i, n, s, p)),
+        )
         self.assertEqual([r["symbol"] for r in rows], ["KO", "UP"])
         self.assertIsNotNone(rows[0]["error"])
         self.assertEqual(calls[-1][0], calls[-1][1])  # barre arrivée à 100 % malgré l'erreur

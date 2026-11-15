@@ -3,13 +3,12 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from tradehelper.backtest import run_backtest
 from tests.helpers import make_ohlcv
+from tradehelper.backtest import run_backtest
 
 
 def long_signals(df, start=0):
-    sig = pd.DataFrame({"position": 0, "stop": np.nan, "target": np.nan, "reason": ""},
-                       index=df.index)
+    sig = pd.DataFrame({"position": 0, "stop": np.nan, "target": np.nan, "reason": ""}, index=df.index)
     sig.loc[sig.index[start:], "position"] = 1
     sig.loc[sig.index[start], "reason"] = "Entrée test"
     return sig
@@ -18,8 +17,7 @@ def long_signals(df, start=0):
 class TestBacktest(unittest.TestCase):
     def test_long_uptrend_profit(self):
         df = make_ohlcv(n=120, drift=0.004, vol=0.005, seed=1)  # forte hausse
-        res = run_backtest(df, long_signals(df), initial_capital=10_000,
-                           commission=0.0, slippage=0.0)
+        res = run_backtest(df, long_signals(df), initial_capital=10_000, commission=0.0, slippage=0.0)
         self.assertGreater(res.metrics["total_return"], 0.0)
         self.assertGreaterEqual(res.metrics["n_trades"], 1)
 
@@ -40,8 +38,7 @@ class TestBacktest(unittest.TestCase):
 
     def test_flat_market_no_trades(self):
         df = make_ohlcv(n=60, drift=0.0, vol=0.0, seed=3)
-        sig = pd.DataFrame({"position": 0, "stop": np.nan, "target": np.nan, "reason": ""},
-                           index=df.index)
+        sig = pd.DataFrame({"position": 0, "stop": np.nan, "target": np.nan, "reason": ""}, index=df.index)
         res = run_backtest(df, sig)
         self.assertEqual(res.metrics["n_trades"], 0)
         self.assertAlmostEqual(res.metrics["total_return"], 0.0)
@@ -49,8 +46,17 @@ class TestBacktest(unittest.TestCase):
     def test_metrics_keys(self):
         df = make_ohlcv(n=100)
         res = run_backtest(df, long_signals(df, start=5))
-        for key in ("total_return", "cagr", "sharpe", "sortino", "max_drawdown",
-                    "win_rate", "profit_factor", "n_trades", "exposure"):
+        for key in (
+            "total_return",
+            "cagr",
+            "sharpe",
+            "sortino",
+            "max_drawdown",
+            "win_rate",
+            "profit_factor",
+            "n_trades",
+            "exposure",
+        ):
             self.assertIn(key, res.metrics)
         self.assertLessEqual(res.metrics["max_drawdown"], 0.0)
         self.assertGreaterEqual(res.equity.iloc[0], 0.0)
@@ -67,8 +73,7 @@ class TestBacktest(unittest.TestCase):
 
     def test_short_disabled_by_default(self):
         df = make_ohlcv(n=60)
-        sig = pd.DataFrame({"position": -1, "stop": np.nan, "target": np.nan, "reason": ""},
-                           index=df.index)
+        sig = pd.DataFrame({"position": -1, "stop": np.nan, "target": np.nan, "reason": ""}, index=df.index)
         res = run_backtest(df, sig, allow_short=False)
         self.assertEqual(res.metrics["n_trades"], 0)
 

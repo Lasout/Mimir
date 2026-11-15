@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from tradehelper.data.store import Store
 from tests.helpers import make_ohlcv
+from tradehelper.data.store import Store
 
 
 class TestStore(unittest.TestCase):
@@ -78,8 +78,7 @@ class TestStore(unittest.TestCase):
         self.store.watch_add("crypto", "BTCUSDT")
         self.store.watch_add("stock", "AAPL")  # doublon -> remplacé, pas dupliqué
         items = self.store.watch_list()
-        self.assertEqual([(s, y) for s, y, _ in items],
-                         [("crypto", "BTCUSDT"), ("stock", "AAPL"), ("stock", "SPY")])
+        self.assertEqual([(s, y) for s, y, _ in items], [("crypto", "BTCUSDT"), ("stock", "AAPL"), ("stock", "SPY")])
         self.assertTrue(all(added for _, _, added in items))
         self.store.watch_remove("stock", "SPY")
         self.assertEqual([y for _, y, _ in self.store.watch_list()], ["BTCUSDT", "AAPL"])
@@ -90,6 +89,7 @@ class TestStore(unittest.TestCase):
 
     def test_parquet_cache_roundtrip(self):
         import importlib.util
+
         if importlib.util.find_spec("pyarrow") is None:
             self.skipTest("pyarrow non installé")
         df = make_ohlcv(n=120)
@@ -112,6 +112,7 @@ class TestStore(unittest.TestCase):
         # régression : un upsert incrémental ne doit PAS écraser le snapshot parquet
         # avec seulement la plage neuve (sinon read() ne renverrait que l'incrément)
         import importlib.util
+
         if importlib.util.find_spec("pyarrow") is None:
             self.skipTest("pyarrow non installé")
         df1 = make_ohlcv(n=100)
@@ -127,13 +128,15 @@ class TestStore(unittest.TestCase):
     def test_parquet_stale_falls_back_to_sqlite(self):
         # garde-fou : snapshot parquet tronqué -> repli SQLite (comptage)
         import importlib.util
+
         if importlib.util.find_spec("pyarrow") is None:
             self.skipTest("pyarrow non installé")
         df = make_ohlcv(n=100)
         self.store.upsert(df, "stock", "FAKE", "1d")
         pq = self.store._pq_path("stock", "FAKE", "1d")
-        pd.DataFrame({"ts": [df.index[-1]], "open": [1.0], "high": [1.0], "low": [1.0],
-                      "close": [1.0], "volume": [1.0]}).to_parquet(pq, index=False)
+        pd.DataFrame(
+            {"ts": [df.index[-1]], "open": [1.0], "high": [1.0], "low": [1.0], "close": [1.0], "volume": [1.0]}
+        ).to_parquet(pq, index=False)
         out = self.store.read("stock", "FAKE", "1d")
         self.assertEqual(len(out), 100)
 
@@ -150,6 +153,7 @@ class TestStore(unittest.TestCase):
         self.assertEqual(self.store.count("crypto", "BTCUSDT", "1d"), 0)
         # les snapshots parquet sont aussi supprimés
         import importlib.util
+
         if importlib.util.find_spec("pyarrow") is not None:
             self.store.upsert(df, "stock", "FAKE", "1d")
             self.assertTrue(self.store._pq_path("stock", "FAKE", "1d").exists())
@@ -164,7 +168,7 @@ class TestStore(unittest.TestCase):
         runs = self.store.list_runs()
         self.assertEqual(len(runs), 2)
         self.assertEqual(runs[0]["kind"], "screener")  # plus récent d'abord
-        self.assertEqual(runs[1]["symbol"], "AAPL")     # uppercasé
+        self.assertEqual(runs[1]["symbol"], "AAPL")  # uppercasé
         self.assertEqual(runs[1]["payload"], {"metrics": {"sharpe": 1.2}})
         self.assertTrue(runs[0]["created_at"])
         self.assertEqual(self.store.clear_runs(), 2)

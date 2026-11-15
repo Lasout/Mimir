@@ -18,8 +18,8 @@ from dataclasses import dataclass
 @dataclass
 class FeeModel:
     name: str
-    flat: float = 0.0          # € par exécution
-    pct: float = 0.0           # fraction du notionnel (0.001 = 0,1 %)
+    flat: float = 0.0  # € par exécution
+    pct: float = 0.0  # fraction du notionnel (0.001 = 0,1 %)
     min_fee: float = 0.0
     max_fee: float = math.inf
 

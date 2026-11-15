@@ -1,18 +1,15 @@
 import unittest
 
-import numpy as np
 import pandas as pd
 
 from tradehelper.config import DEFAULTS
-from tradehelper.data.providers import (BinanceProvider, DataError, normalize,
-                                        yahoo_symbol)
+from tradehelper.data.providers import BinanceProvider, DataError, normalize, yahoo_symbol
 
 
 class TestNormalize(unittest.TestCase):
     def test_tz_aware_to_naive_and_columns(self):
         idx = pd.date_range("2026-01-01", periods=5, tz="America/New_York")
-        df = pd.DataFrame({"open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5, "volume": 100},
-                          index=idx)
+        df = pd.DataFrame({"open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5, "volume": 100}, index=idx)
         out = normalize(df)
         self.assertIsNone(out.index.tz)
         self.assertEqual(list(out.columns), ["Open", "High", "Low", "Close", "Volume"])
@@ -60,8 +57,7 @@ class FakeSession:
         rows = []
         for i in range(start_idx, end_idx):
             t = self.start_ms + i * self.sec * 1000
-            rows.append([t, "100", "101", "99", "100.5", "10", t + self.sec * 1000 - 1,
-                         "0", 0, "0", "0", "0"])
+            rows.append([t, "100", "101", "99", "100.5", "10", t + self.sec * 1000 - 1, "0", 0, "0", "0", "0"])
         return FakeResponse(rows)
 
 
@@ -101,8 +97,9 @@ class TestBinancePagination(unittest.TestCase):
         start = pd.Timestamp("2026-01-01")
         session = FakeSession(int(start.timestamp() * 1000), total_bars=0, sec=86400)
         with self.assertRaises(DataError):
-            BinanceProvider().fetch("crypto", "XXXUSDT", start, start + pd.Timedelta(days=5),
-                                    "1d", DEFAULTS, session=session)
+            BinanceProvider().fetch(
+                "crypto", "XXXUSDT", start, start + pd.Timedelta(days=5), "1d", DEFAULTS, session=session
+            )
 
 
 if __name__ == "__main__":

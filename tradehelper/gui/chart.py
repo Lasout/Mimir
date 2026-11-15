@@ -15,8 +15,8 @@ CROSS = "#4f9cf9"
 
 def _candles(ax, df: pd.DataFrame) -> None:
     x = mdates.date2num(df.index.to_pydatetime())
-    o, h, l, c = df["Open"].to_numpy(), df["High"].to_numpy(), df["Low"].to_numpy(), df["Close"].to_numpy()
-    for xi, oi, hi, li, ci in zip(x, o, h, l, c):
+    o, h, lo, c = df["Open"].to_numpy(), df["High"].to_numpy(), df["Low"].to_numpy(), df["Close"].to_numpy()
+    for xi, oi, hi, li, ci in zip(x, o, h, lo, c, strict=True):
         color = UP if ci >= oi else DOWN
         ax.vlines(xi, li, hi, color=color, linewidth=0.8, zorder=1)
         body_low, body_high = min(oi, ci), max(oi, ci)
@@ -27,8 +27,9 @@ def _candles(ax, df: pd.DataFrame) -> None:
     ax.grid(True, alpha=0.25)
 
 
-def draw_price_chart(fig: Figure, df: pd.DataFrame, signals: pd.DataFrame | None = None,
-                     title: str = "", max_bars: int = 160) -> None:
+def draw_price_chart(
+    fig: Figure, df: pd.DataFrame, signals: pd.DataFrame | None = None, title: str = "", max_bars: int = 160
+) -> None:
     """Chandeliers + moyennes mobiles + Bollinger + RSI + MACD + volume."""
     fig.clear()
     df = df.dropna(subset=["Close"])
@@ -118,13 +119,24 @@ class PriceCrosshair:
         self._cids = []
         if self.ax is not None:
             self.vline = self.ax.axvline(0, color=CROSS, lw=0.8, ls="--", visible=False, zorder=4)
-            self.dot, = self.ax.plot([], [], marker="o", color=CROSS, ms=5, zorder=6, visible=False)
+            (self.dot,) = self.ax.plot([], [], marker="o", color=CROSS, ms=5, zorder=6, visible=False)
             self.annot = self.ax.annotate(
-                "", xy=(0, 0), xytext=(14, 14), textcoords="offset points", fontsize=8,
+                "",
+                xy=(0, 0),
+                xytext=(14, 14),
+                textcoords="offset points",
+                fontsize=8,
                 color=rcParams["text.color"],
-                bbox=dict(boxstyle="round,pad=0.35", fc=rcParams["legend.facecolor"],
-                          ec=rcParams["axes.edgecolor"], alpha=0.95),
-                arrowprops=dict(arrowstyle="-", color=CROSS, lw=0.8), zorder=7, visible=False)
+                bbox=dict(
+                    boxstyle="round,pad=0.35",
+                    fc=rcParams["legend.facecolor"],
+                    ec=rcParams["axes.edgecolor"],
+                    alpha=0.95,
+                ),
+                arrowprops=dict(arrowstyle="-", color=CROSS, lw=0.8),
+                zorder=7,
+                visible=False,
+            )
             self._cids = [
                 canvas.mpl_connect("motion_notify_event", self._on_move),
                 canvas.mpl_connect("figure_leave_event", self._on_leave),
@@ -151,7 +163,8 @@ class PriceCrosshair:
             f"{pd.Timestamp(ts):%Y-%m-%d %H:%M}\n"
             f"O {row['Open']:.2f}  H {row['High']:.2f}\n"
             f"L {row['Low']:.2f}  C {row['Close']:.2f}\n"
-            f"Vol {vol}   RSI {rsi}")
+            f"Vol {vol}   RSI {rsi}"
+        )
         self.annot.xy = (xi, row["Close"])
         self.annot.set_visible(True)
         self.canvas.draw_idle()
@@ -176,8 +189,9 @@ def attach_price_crosshair(canvas, fig: Figure, df: pd.DataFrame) -> PriceCrossh
     return PriceCrosshair(canvas, fig, df)
 
 
-def draw_equity_chart(fig: Figure, equity: pd.Series, trades: pd.DataFrame | None = None,
-                      title: str = "Courbe d'equity") -> None:
+def draw_equity_chart(
+    fig: Figure, equity: pd.Series, trades: pd.DataFrame | None = None, title: str = "Courbe d'equity"
+) -> None:
     fig.clear()
     gs = fig.add_gridspec(2, 1, height_ratios=[3, 1], hspace=0.12)
     ax = fig.add_subplot(gs[0])
@@ -193,8 +207,7 @@ def draw_equity_chart(fig: Figure, equity: pd.Series, trades: pd.DataFrame | Non
             y = equity.loc[ts] if ts in equity.index else equity.asof(ts)
             if pd.notna(y):
                 color = UP if t["ret"] > 0 else DOWN
-                ax.scatter(mdates.date2num(ts.to_pydatetime()), y, marker="o",
-                           color=color, s=25, zorder=5, alpha=0.8)
+                ax.scatter(mdates.date2num(ts.to_pydatetime()), y, marker="o", color=color, s=25, zorder=5, alpha=0.8)
     peak = equity.cummax()
     dd = (equity - peak) / peak
     ax_vol.fill_between(x, dd.to_numpy() * 100, 0, color=DOWN, alpha=0.4)

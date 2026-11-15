@@ -16,8 +16,9 @@ def make_df(start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
     idx = pd.bdate_range(start, end)
     n = len(idx)
     close = pd.Series(100.0, index=idx) + range(n)
-    return pd.DataFrame({"Open": close, "High": close + 1, "Low": close - 1,
-                         "Close": close, "Volume": 1000.0}, index=idx)
+    return pd.DataFrame(
+        {"Open": close, "High": close + 1, "Low": close - 1, "Close": close, "Volume": 1000.0}, index=idx
+    )
 
 
 class FakeProvider:
@@ -122,8 +123,10 @@ class TestLoadDataIncremental(unittest.TestCase):
                 start = max(pd.Timestamp(start), pd.Timestamp("2020-01-01"))
                 if start >= pd.Timestamp(end):
                     from tradehelper.data.providers import DataError as DE
+
                     raise DE("rien avant 2020")
                 return make_df(start, pd.Timestamp(end))
+
         prov = Since2020("since2020")
         self._patch([prov])
         src.load_data("stock", "FAKE", period="max", interval="1d", store=self.store, cfg=self.cfg)
@@ -192,32 +195,37 @@ class TestLoadDataIncremental(unittest.TestCase):
     def test_adjust_prices_toggle_invalidates_store(self):
         prov = FakeProvider("ok")
         self._patch([prov])
-        src.load_data("stock", "FAKE", period="1mo", interval="1d", store=self.store,
-                      cfg=dict(self.cfg, adjust_prices=False))
+        src.load_data(
+            "stock", "FAKE", period="1mo", interval="1d", store=self.store, cfg=dict(self.cfg, adjust_prices=False)
+        )
         self.assertEqual(self.store.meta_get("prices_adjusted"), False)
         self.assertGreater(self.store.count("stock", "FAKE", "1d"), 0)
         n1 = len(prov.calls)
         # passage en ajusté : le store est vidé puis re-téléchargé
-        src.load_data("stock", "FAKE", period="1mo", interval="1d", store=self.store,
-                      cfg=dict(self.cfg, adjust_prices=True))
+        src.load_data(
+            "stock", "FAKE", period="1mo", interval="1d", store=self.store, cfg=dict(self.cfg, adjust_prices=True)
+        )
         self.assertEqual(self.store.meta_get("prices_adjusted"), True)
         self.assertGreater(len(prov.calls), n1)
         # appel suivant en ajusté : servi par le store (TTL long), pas de re-fetch
         n2 = len(prov.calls)
-        src.load_data("stock", "FAKE", period="1mo", interval="1d", store=self.store,
-                      cfg=dict(self.cfg, adjust_prices=True))
+        src.load_data(
+            "stock", "FAKE", period="1mo", interval="1d", store=self.store, cfg=dict(self.cfg, adjust_prices=True)
+        )
         self.assertEqual(len(prov.calls), n2)
 
     def test_legacy_store_sans_meta_consideree_brute(self):
         prov = FakeProvider("ok")
         self._patch([prov])
-        src.load_data("stock", "FAKE", period="1mo", interval="1d", store=self.store,
-                      cfg=dict(self.cfg, adjust_prices=False))
+        src.load_data(
+            "stock", "FAKE", period="1mo", interval="1d", store=self.store, cfg=dict(self.cfg, adjust_prices=False)
+        )
         self.store.meta_set("prices_adjusted", None)  # simule une vieille base sans méta
         n1 = len(prov.calls)
         # mode ajusté demandé : la base legacy (brute) est invalidée et re-téléchargée
-        src.load_data("stock", "FAKE", period="1mo", interval="1d", store=self.store,
-                      cfg=dict(self.cfg, adjust_prices=True))
+        src.load_data(
+            "stock", "FAKE", period="1mo", interval="1d", store=self.store, cfg=dict(self.cfg, adjust_prices=True)
+        )
         self.assertGreater(len(prov.calls), n1)
         self.assertEqual(self.store.meta_get("prices_adjusted"), True)
 

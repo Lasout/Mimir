@@ -3,9 +3,9 @@ import unittest
 import numpy as np
 
 import tradehelper.compute as compute
+from tests.helpers import make_ohlcv
 from tradehelper.compute import add_all_dispatch, detect_backend
 from tradehelper.indicators import add_all
-from tests.helpers import make_ohlcv
 
 
 class TestDetectBackend(unittest.TestCase):
@@ -34,6 +34,7 @@ class TestDetectBackend(unittest.TestCase):
 
     def test_env_override(self):
         import os
+
         compute.gpu_info = lambda: None
         os.environ["TRADEHELPER_BACKEND"] = "cpu"
         try:
@@ -48,8 +49,9 @@ class TestAddAllDispatch(unittest.TestCase):
         a = add_all(df)
         b = add_all_dispatch(df, backend="cpu")
         for col in ("SMA20", "EMA50", "RSI14", "MACD", "BB_upper", "ATR14", "ADX14", "Vol20"):
-            self.assertTrue(np.allclose(a[col].to_numpy(dtype=float), b[col].to_numpy(dtype=float),
-                                        equal_nan=True), col)
+            self.assertTrue(
+                np.allclose(a[col].to_numpy(dtype=float), b[col].to_numpy(dtype=float), equal_nan=True), col
+            )
 
     def test_cuda_without_cupy_falls_back_to_cpu(self):
         # dans le bac à sable (pas de cupy), backend="cuda" doit retomber sur CPU sans erreur
@@ -57,12 +59,12 @@ class TestAddAllDispatch(unittest.TestCase):
         a = add_all(df)
         try:
             import cupy  # noqa
+
             self.skipTest("cupy présent : le test de repli GPU n'a pas de sens ici")
         except ImportError:
             pass
         b = add_all_dispatch(df, backend="cuda")
-        self.assertTrue(np.allclose(a["RSI14"].to_numpy(dtype=float), b["RSI14"].to_numpy(dtype=float),
-                                    equal_nan=True))
+        self.assertTrue(np.allclose(a["RSI14"].to_numpy(dtype=float), b["RSI14"].to_numpy(dtype=float), equal_nan=True))
 
     def test_auto_dispatch_works(self):
         df = make_ohlcv(n=80)
@@ -78,15 +80,29 @@ class TestGpuEquivalence(unittest.TestCase):
         df = make_ohlcv(n=300, seed=5)
         cpu = add_all(df)
         gpu = compute.add_all_gpu(df)
-        for col in ("SMA20", "EMA12", "EMA26", "RSI14", "MACD", "MACD_signal", "BB_upper",
-                    "ATR14", "ADX14", "Donchian_upper", "Vol20"):
-            self.assertTrue(np.allclose(cpu[col].to_numpy(dtype=float), gpu[col].to_numpy(dtype=float),
-                                        atol=1e-8, equal_nan=True), col)
+        for col in (
+            "SMA20",
+            "EMA12",
+            "EMA26",
+            "RSI14",
+            "MACD",
+            "MACD_signal",
+            "BB_upper",
+            "ATR14",
+            "ADX14",
+            "Donchian_upper",
+            "Vol20",
+        ):
+            self.assertTrue(
+                np.allclose(cpu[col].to_numpy(dtype=float), gpu[col].to_numpy(dtype=float), atol=1e-8, equal_nan=True),
+                col,
+            )
 
 
 class TestMLDeviceParam(unittest.TestCase):
     def test_ml_accepts_device(self):
         from tradehelper.strategies import get_strategy
+
         s = get_strategy("ml_signal", device="cpu")
         self.assertEqual(s.params["device"], "cpu")
 
@@ -106,8 +122,7 @@ class TestScreenerParallel(unittest.TestCase):
         old_method = mp.get_start_method(allow_none=True)
         try:
             mp.set_start_method("fork", force=True)  # le fork hérite du monkeypatch
-            rows = sm.screen_assets("crypto", ["AAA", "BBB", "CCC"], period="1y",
-                                    interval="1d", workers=2)
+            rows = sm.screen_assets("crypto", ["AAA", "BBB", "CCC"], period="1y", interval="1d", workers=2)
         finally:
             mp.set_start_method(old_method or "fork", force=True)
             sm.load_data = orig_load

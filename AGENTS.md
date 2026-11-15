@@ -131,9 +131,15 @@ tests/                        # unittest, données synthétiques (tests/helpers.
 ```bash
 pip install --user -r requirements.txt     # pandas numpy matplotlib yfinance requests pillow
 python3 run.py                              # lancer la GUI (nécessite un display X)
-python3 -m unittest discover -s tests -v   # tests hors-ligne, sans display (la GUI Tk
-                                            #   n'est testée que par les scripts de fumée
-                                            #   manuels, pas par la suite unitaire)
+python3 -m unittest discover -s tests -v   # idem, compatible pytest :
+python3 -m pytest                          # suite pytest (hors-ligne, sans display)
+python3 -m pytest --cov=tradehelper.indicators --cov=tradehelper.backtest \
+  --cov=tradehelper.strategies --cov=tradehelper.screener --cov-fail-under=80
+                                            # couverture du cœur (93 %, objectif > 80 %)
+ruff check . && ruff format --check .      # lint (config pyproject.toml)
+pre-commit run --all-files                  # hooks : ruff, whitespace, yaml, detect-secrets
+                                            #   (baseline .secrets.baseline) — installer avec
+                                            #   pip install -r requirements-dev.txt && pre-commit install
 TRADEHELPER_NETWORK_TESTS=1 python3 -m unittest tests.test_integration_network -v
                                             # tests d'intégration RÉSEAU (marqués, skippés
                                             #   sinon — ne JAMAIS les lancer sans le flag)
@@ -163,6 +169,9 @@ python3 -m mypy                             # typage strict du cœur (pyproject.
 
 ## Dépôt git
 
-Dépôt initialisé à la racine du projet (branche `main`). Ne push sur aucun remote ni
-aucun tag `v*` sans autorisation explicite (le tag déclenche la release PyInstaller).
+Dépôt initialisé à la racine du projet (branche `main`), remote `origin` =
+`git@github.com:Lasout/Mimir.git` (repo privé). Ne push sur aucun remote ni aucun tag
+`v*` sans autorisation explicite (le tag déclenche la release PyInstaller). Push initial :
+`git push -u origin main` depuis une machine avec credentials GitHub.
 CI/CD actif (`.github/workflows/`) ; évolutions prévues dans ROADMAP.md.
+Protection de `main` (require PR + checks CI) à activer dans les settings GitHub.

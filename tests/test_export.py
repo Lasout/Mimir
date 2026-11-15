@@ -8,9 +8,14 @@ from pathlib import Path
 import pandas as pd
 from matplotlib.figure import Figure
 
-from tradehelper.gui.export import (SCREENER_COLS, export_figure_png, export_screener_csv,
-                                    export_text_report, export_trades_csv)
 from tests.helpers import make_ohlcv
+from tradehelper.gui.export import (
+    SCREENER_COLS,
+    export_figure_png,
+    export_screener_csv,
+    export_text_report,
+    export_trades_csv,
+)
 
 
 class TestExport(unittest.TestCase):
@@ -23,8 +28,18 @@ class TestExport(unittest.TestCase):
 
     def test_export_screener_csv(self):
         rows = [
-            {"symbol": "SPY", "type": "ETF", "score": 0.42, "label": "Achat", "position": "ACHAT",
-             "sharpe": 1.3, "total_return": 0.21, "n_trades": 12, "error": None, "entry": 500.0},
+            {
+                "symbol": "SPY",
+                "type": "ETF",
+                "score": 0.42,
+                "label": "Achat",
+                "position": "ACHAT",
+                "sharpe": 1.3,
+                "total_return": 0.21,
+                "n_trades": 12,
+                "error": None,
+                "entry": 500.0,
+            },
             {"symbol": "AAPL", "type": "Action", "score": -0.1, "label": "Neutre", "error": None},
         ]
         path = export_screener_csv(rows, self.dir / "scr.csv")
@@ -48,12 +63,17 @@ class TestExport(unittest.TestCase):
 
     def test_export_trades_csv(self):
         df = make_ohlcv(n=30)
-        trades = pd.DataFrame({
-            "entry_time": [df.index[5], df.index[15]],
-            "exit_time": [df.index[10], df.index[20]],
-            "side": ["long", "long"], "pnl": [12.5, -3.0], "ret": [0.01, -0.002],
-            "bars": [5, 5], "reason": ["signal", "stop"],
-        })
+        trades = pd.DataFrame(
+            {
+                "entry_time": [df.index[5], df.index[15]],
+                "exit_time": [df.index[10], df.index[20]],
+                "side": ["long", "long"],
+                "pnl": [12.5, -3.0],
+                "ret": [0.01, -0.002],
+                "bars": [5, 5],
+                "reason": ["signal", "stop"],
+            }
+        )
         path = export_trades_csv(trades, self.dir / "trades.csv")
         out = pd.read_csv(path)
         self.assertEqual(len(out), 2)

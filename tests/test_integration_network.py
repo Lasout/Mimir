@@ -20,6 +20,7 @@ NETWORK = os.environ.get("TRADEHELPER_NETWORK_TESTS") == "1"
 class TestIntegrationNetwork(unittest.TestCase):
     def setUp(self):
         from tradehelper.data.store import Store
+
         self.tmp = tempfile.TemporaryDirectory()
         self.store = Store(Path(self.tmp.name) / "net.db")
 
@@ -39,27 +40,32 @@ class TestIntegrationNetwork(unittest.TestCase):
 
     def test_stock_yahoo_1mo_daily(self):
         from tradehelper.data.sources import load_data
+
         df = load_data("stock", "AAPL", period="1mo", interval="1d", store=self.store)
         self._check_ohlcv(df, min_bars=10)
 
     def test_stock_intraday_1h(self):
         # Yahoo limite l'intraday (1h = 730 j max) : on vérifie que la source répond
         from tradehelper.data.sources import load_data
+
         df = load_data("stock", "MSFT", period="1mo", interval="1h", store=self.store)
         self._check_ohlcv(df, min_bars=50)
 
     def test_crypto_binance_3mo_daily(self):
         from tradehelper.data.sources import load_data
+
         df = load_data("crypto", "BTCUSDT", period="3mo", interval="1d", store=self.store)
         self._check_ohlcv(df, min_bars=30)
 
     def test_forex_frankfurter_1mo(self):
         from tradehelper.data.sources import load_data
+
         df = load_data("forex", "EURUSD", period="1mo", interval="1d", store=self.store)
         self._check_ohlcv(df, min_bars=10)
 
     def test_store_sert_du_cache_au_2e_appel(self):
         from tradehelper.data.sources import load_data
+
         df1 = load_data("stock", "AAPL", period="1mo", interval="1d", store=self.store)
         n1 = self.store.count_source("stock")
         self.assertGreater(n1, 0)
@@ -71,6 +77,7 @@ class TestIntegrationNetwork(unittest.TestCase):
         from tradehelper.advice import advise
         from tradehelper.data.sources import load_data
         from tradehelper.indicators import add_all
+
         df = add_all(load_data("stock", "AAPL", period="6mo", interval="1d", store=self.store))
         adv = advise(df, "AAPL", source="stock", interval="1d")
         for key in ("score", "label", "reasons", "last_close", "stop_suggestion", "risk", "horizon"):
@@ -81,13 +88,18 @@ class TestIntegrationNetwork(unittest.TestCase):
 
     def test_screener_2_actifs_reels(self):
         import tradehelper.screener as screener_mod
+
         rows = screener_mod.screen_assets(
-            "stock", ["AAPL", "MSFT"], period="6mo", interval="1d",
-            strategies=["ma_cross", "rsi_reversion"], workers=1,
+            "stock",
+            ["AAPL", "MSFT"],
+            period="6mo",
+            interval="1d",
+            strategies=["ma_cross", "rsi_reversion"],
+            workers=1,
         )
         self.assertEqual(len(rows), 2)
         for r in rows:
-            self.assertIsNone(r["error"], f'{r["symbol"]}: {r["error"]}')
+            self.assertIsNone(r["error"], f"{r['symbol']}: {r['error']}")
             self.assertIn(r["position"], ("ACHAT", "ATTENTE", "SHORT"))
             self.assertIn("horizon", r)
 

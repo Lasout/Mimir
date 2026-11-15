@@ -38,7 +38,9 @@ def technical_analysis(df: pd.DataFrame) -> dict:
         trend = 0.0
     scores["trend"] = trend
     if trend > 0.3:
-        reasons.append(f"Tendance haussière : cours {last:.2f} au-dessus de la moyenne mobile (EMA50 {ema50.iloc[-1]:.2f}).")
+        reasons.append(
+            f"Tendance haussière : cours {last:.2f} au-dessus de la moyenne mobile (EMA50 {ema50.iloc[-1]:.2f})."
+        )
     elif trend < -0.3:
         reasons.append(f"Tendance baissière : cours {last:.2f} sous la moyenne mobile (EMA50 {ema50.iloc[-1]:.2f}).")
     else:
@@ -50,7 +52,7 @@ def technical_analysis(df: pd.DataFrame) -> dict:
     m = macd(close)
     hist_last = float(m["hist"].iloc[-1])
     hist_slope = float(m["hist"].iloc[-1] - m["hist"].iloc[-3]) if n > 3 else 0.0
-    rsi_score = _clip((50.0 - rsi_last) / 25.0)          # RSI < 50 -> positif
+    rsi_score = _clip((50.0 - rsi_last) / 25.0)  # RSI < 50 -> positif
     macd_score = _clip(hist_last / (abs(float(close.iloc[-1])) * 0.01)) + _clip(hist_slope * 50.0)
     macd_score = _clip(macd_score / 2.0)
     momentum = float(np.clip(0.5 * rsi_score + 0.5 * macd_score, -1, 1))
@@ -79,7 +81,7 @@ def technical_analysis(df: pd.DataFrame) -> dict:
     mid = sma(close, window)
     std = close.rolling(window=window, min_periods=window).std(ddof=0)
     upper, lower = mid + 2 * std, mid - 2 * std
-    denom = (upper.iloc[-1] - lower.iloc[-1])
+    denom = upper.iloc[-1] - lower.iloc[-1]
     pct_b = float((close.iloc[-1] - lower.iloc[-1]) / denom) if denom and not np.isnan(denom) and denom > 0 else 0.5
     vol_score = _clip(2.0 * pct_b - 1.0)  # proche bande basse -> acheteur
     atr14 = atr(df, 14)

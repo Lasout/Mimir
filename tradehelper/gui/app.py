@@ -6,6 +6,7 @@ par tous les onglets : le backtest porte toujours sur l'actif sélectionné.
 
 from __future__ import annotations
 
+import contextlib
 import queue
 import threading
 import time
@@ -17,16 +18,13 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from matplotlib.figure import Figure
 
 from ..advice import advise
-from ..backtest import (grid_search, monte_carlo_trades, periods_per_year, run_backtest,
-                        run_portfolio, walk_forward)
-from ..broker import BrokerError, get_broker
-from ..paper import PaperError, PaperPortfolio
+from ..backtest import grid_search, monte_carlo_trades, periods_per_year, run_backtest, run_portfolio, walk_forward
 from ..compute import add_all_dispatch, backend_label, detect_backend
 from ..data.sources import SOURCE_LABELS, DataError, data_range, load_data
 from ..data.store import default_store
-from ..data.universe import universe_for, default_symbols
+from ..data.universe import default_symbols, universe_for
 from ..fees import get_fee_model, list_presets
-from ..indicators import add_all
+from ..paper import PaperError, PaperPortfolio
 from ..screener import screen_assets, top_pick
 from ..strategies import get_strategy, list_strategies
 from .chart import attach_price_crosshair, draw_equity_chart, draw_price_chart
@@ -61,13 +59,13 @@ class ToolTip:
         self.tip = tw = tk.Toplevel(self.widget)
         tw.wm_overrideredirect(True)
         tw.wm_geometry(f"+{x}+{y}")
-        lbl = tk.Label(tw, text=self.text, justify="left", relief="solid", borderwidth=1,
-                       padx=6, pady=3, wraplength=320)
+        lbl = tk.Label(
+            tw, text=self.text, justify="left", relief="solid", borderwidth=1, padx=6, pady=3, wraplength=320
+        )
         lbl.pack()
         try:
             style = ttk.Style(self.widget)
-            lbl.configure(bg=style.lookup(".", "background"),
-                          fg=style.lookup(".", "foreground"))
+            lbl.configure(bg=style.lookup(".", "background"), fg=style.lookup(".", "foreground"))
         except tk.TclError:
             pass
 
@@ -135,18 +133,25 @@ class TradeHelperApp:
 
         self._build_menu()
         self._bind_shortcuts()
-        ToolTip(self.btn_analyse, "Charge l'actif de la barre du haut, calcule les indicateurs, "
-                                 "la stratégie choisie et l'avis (technique + fondamental). Ctrl+R")
+        ToolTip(
+            self.btn_analyse,
+            "Charge l'actif de la barre du haut, calcule les indicateurs, "
+            "la stratégie choisie et l'avis (technique + fondamental). Ctrl+R",
+        )
         ToolTip(self.btn_bt, "Backtest walk-forward de la stratégie choisie sur l'actif courant. Ctrl+B")
-        ToolTip(self.btn_scr, "Backteste toutes les stratégies sur chaque symbole de la liste "
-                               "et recommande position / horizon / niveaux. Ctrl+S")
+        ToolTip(
+            self.btn_scr,
+            "Backteste toutes les stratégies sur chaque symbole de la liste "
+            "et recommande position / horizon / niveaux. Ctrl+S",
+        )
         ToolTip(self.btn_pf, "Backtest du portefeuille multi-actifs (parts égales, frais par exécution).")
 
         bottom = ttk.Frame(root)
         bottom.pack(fill="x", side="bottom")
         self.status = tk.StringVar(value=t("status_ready", self.lang))
         ttk.Label(bottom, textvariable=self.status, style="Status.TLabel", anchor="w").pack(
-            side="left", fill="x", expand=True)
+            side="left", fill="x", expand=True
+        )
         self.backend_var = tk.StringVar(value="")
         self.backend_lbl = ttk.Label(bottom, textvariable=self.backend_var, style="Status.TLabel")
         self.backend_lbl.pack(side="right")
@@ -183,8 +188,7 @@ class TradeHelperApp:
 
         `determinate=True` : barre graduée (ex. screener, maximum = nb de symboles) ;
         sinon mode indéterminé animé (backtest, analyse, portefeuille...)."""
-        self.progress.config(mode="determinate" if determinate else "indeterminate",
-                             maximum=maximum, value=0)
+        self.progress.config(mode="determinate" if determinate else "indeterminate", maximum=maximum, value=0)
         self.progress.pack(side="right", padx=6, before=self.backend_lbl)
         if not determinate:
             self.progress.start(60)
@@ -222,8 +226,7 @@ class TradeHelperApp:
         backend.grid(row=0, column=9, padx=4)
 
         source.bind("<<ComboboxSelected>>", lambda _=None: self._set_source(source.get()))
-        return {"source": source, "symbol": symbol, "period": period, "interval": interval,
-                "backend": backend}
+        return {"source": source, "symbol": symbol, "period": period, "interval": interval, "backend": backend}
 
     def _set_source(self, src: str):
         """Applique une source à la barre d'instrument globale (combo + intervalles + actif)."""
@@ -286,8 +289,7 @@ class TradeHelperApp:
             raise DataError("Symbole vide.")
         if not hasattr(self, "_df_memo"):
             self._df_memo = {}
-        key = (vals["source"], vals["symbol"].upper(), vals["period"], vals["interval"],
-               vals.get("backend", "auto"))
+        key = (vals["source"], vals["symbol"].upper(), vals["period"], vals["interval"], vals.get("backend", "auto"))
         if key in self._df_memo:
             return self._df_memo[key]
         df = load_data(vals["source"], vals["symbol"], period=vals["period"], interval=vals["interval"])
@@ -312,11 +314,13 @@ class TradeHelperApp:
                 self.store.meta_set("ui.font_scale", self.font_scale)
             except Exception:
                 pass
-        for canvas in (getattr(self, "canvas_a", None), getattr(self, "canvas_bt", None),
-                       getattr(self, "canvas_pf", None)):
+        for canvas in (
+            getattr(self, "canvas_a", None),
+            getattr(self, "canvas_bt", None),
+            getattr(self, "canvas_pf", None),
+        ):
             if canvas is not None:
-                canvas.get_tk_widget().configure(
-                    bg=style.lookup("TFrame", "background"))
+                canvas.get_tk_widget().configure(bg=style.lookup("TFrame", "background"))
         self._redraw_charts()
 
     # ------------------------------------------------------------- i18n
@@ -330,18 +334,18 @@ class TradeHelperApp:
             return
         self.lang = lang
         if self.store is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self.store.meta_set("ui.lang", lang)
-            except Exception:
-                pass
         for w, attr, key in self._i18n_reg:
-            try:
+            with contextlib.suppress(tk.TclError):
                 w.configure(**{attr: t(key, lang)})
-            except tk.TclError:
-                pass
-        for tab, key in ((self.tab_analyse, "tab_analyse"), (self.tab_backtest, "tab_backtest"),
-                         (self.tab_screener, "tab_screener"), (self.tab_portfolio, "tab_portfolio"),
-                         (self.tab_paper, "tab_paper")):
+        for tab, key in (
+            (self.tab_analyse, "tab_analyse"),
+            (self.tab_backtest, "tab_backtest"),
+            (self.tab_screener, "tab_screener"),
+            (self.tab_portfolio, "tab_portfolio"),
+            (self.tab_paper, "tab_paper"),
+        ):
             self.notebook.tab(tab, text=t(key, lang))
         self.root.title(t("app_title", lang))
         self.menubar.destroy()
@@ -351,14 +355,22 @@ class TradeHelperApp:
         """Redessine les graphiques existants avec le thème courant (si des données sont chargées)."""
         if getattr(self, "df", None) is not None and self.last_signals is not None:
             vals = self._ctx_values(self.ctx)
-            draw_price_chart(self.fig_a, self.df, self.last_signals,
-                             title=f"{vals['symbol']} — {vals['interval']} — stratégie {self.strat_var.get()}")
+            draw_price_chart(
+                self.fig_a,
+                self.df,
+                self.last_signals,
+                title=f"{vals['symbol']} — {vals['interval']} — stratégie {self.strat_var.get()}",
+            )
             self.canvas_a.draw_idle()
             self._attach_crosshair()
         if self.backtest_result is not None and getattr(self, "_bt_draw", None) is not None:
             res, strat, vals, suffix = self._bt_draw
-            draw_equity_chart(self.fig_bt, res.equity, res.trades,
-                              title=f"Equity — {strat.label} sur {vals['symbol']} ({vals['interval']}) {suffix}")
+            draw_equity_chart(
+                self.fig_bt,
+                res.equity,
+                res.trades,
+                title=f"Equity — {strat.label} sur {vals['symbol']} ({vals['interval']}) {suffix}",
+            )
             self.canvas_bt.draw_idle()
 
     def toggle_theme(self):
@@ -391,29 +403,32 @@ class TradeHelperApp:
         self.lang_var = tk.StringVar(value=lang)
 
         m_fichier = tk.Menu(menubar, tearoff=0)
-        m_fichier.add_command(label=t("menu_export_png", lang), accelerator="Ctrl+E",
-                              command=self._export_png_active)
-        m_fichier.add_command(label=t("menu_export_screener", lang), accelerator="Ctrl+Shift+S",
-                              command=self._export_screener_csv)
-        m_fichier.add_command(label=t("menu_export_trades", lang),
-                              command=self._export_trades_csv)
-        m_fichier.add_command(label=t("menu_export_report", lang),
-                              command=self._export_report_txt)
+        m_fichier.add_command(label=t("menu_export_png", lang), accelerator="Ctrl+E", command=self._export_png_active)
+        m_fichier.add_command(
+            label=t("menu_export_screener", lang), accelerator="Ctrl+Shift+S", command=self._export_screener_csv
+        )
+        m_fichier.add_command(label=t("menu_export_trades", lang), command=self._export_trades_csv)
+        m_fichier.add_command(label=t("menu_export_report", lang), command=self._export_report_txt)
         m_fichier.add_separator()
-        m_fichier.add_command(label=t("menu_history", lang), accelerator="Ctrl+H",
-                              command=self._show_history)
+        m_fichier.add_command(label=t("menu_history", lang), accelerator="Ctrl+H", command=self._show_history)
         m_fichier.add_separator()
         m_fichier.add_command(label=t("menu_quit", lang), accelerator="Ctrl+Q", command=self.root.destroy)
         menubar.add_cascade(label=t("menu_file", lang), menu=m_fichier)
 
         m_onglets = tk.Menu(menubar, tearoff=0)
-        for i, (tab, key) in enumerate([(self.tab_analyse, "tab_analyse"),
-                                        (self.tab_backtest, "tab_backtest"),
-                                        (self.tab_screener, "tab_screener"),
-                                        (self.tab_portfolio, "tab_portfolio"),
-                                        (self.tab_paper, "tab_paper")], start=1):
-            m_onglets.add_command(label=t(key, lang), accelerator=f"Ctrl+{i}",
-                                  command=lambda tt=tab: self.notebook.select(tt))
+        for i, (tab, key) in enumerate(
+            [
+                (self.tab_analyse, "tab_analyse"),
+                (self.tab_backtest, "tab_backtest"),
+                (self.tab_screener, "tab_screener"),
+                (self.tab_portfolio, "tab_portfolio"),
+                (self.tab_paper, "tab_paper"),
+            ],
+            start=1,
+        ):
+            m_onglets.add_command(
+                label=t(key, lang), accelerator=f"Ctrl+{i}", command=lambda tt=tab: self.notebook.select(tt)
+            )
         m_onglets.add_separator()
         m_onglets.add_command(label=t("btn_analyse", lang), accelerator="Ctrl+R", command=self.on_analyse)
         m_onglets.add_command(label=t("btn_backtest", lang), accelerator="Ctrl+B", command=self.on_backtest)
@@ -421,17 +436,18 @@ class TradeHelperApp:
         menubar.add_cascade(label=t("menu_tabs", lang), menu=m_onglets)
 
         m_aff = tk.Menu(menubar, tearoff=0)
-        m_aff.add_checkbutton(label=t("menu_dark", lang), variable=self.theme_var,
-                              accelerator="Ctrl+D", command=self.toggle_theme)
-        m_aff.add_command(label=t("menu_font_up", lang), accelerator="Ctrl++",
-                          command=lambda: self.zoom_font(+0.1))
-        m_aff.add_command(label=t("menu_font_down", lang), accelerator="Ctrl+-",
-                          command=lambda: self.zoom_font(-0.1))
+        m_aff.add_checkbutton(
+            label=t("menu_dark", lang), variable=self.theme_var, accelerator="Ctrl+D", command=self.toggle_theme
+        )
+        m_aff.add_command(label=t("menu_font_up", lang), accelerator="Ctrl++", command=lambda: self.zoom_font(+0.1))
+        m_aff.add_command(label=t("menu_font_down", lang), accelerator="Ctrl+-", command=lambda: self.zoom_font(-0.1))
         m_aff.add_separator()
-        m_aff.add_radiobutton(label=t("lang_fr", lang), variable=self.lang_var, value="fr",
-                              command=lambda: self.set_language("fr"))
-        m_aff.add_radiobutton(label=t("lang_en", lang), variable=self.lang_var, value="en",
-                              command=lambda: self.set_language("en"))
+        m_aff.add_radiobutton(
+            label=t("lang_fr", lang), variable=self.lang_var, value="fr", command=lambda: self.set_language("fr")
+        )
+        m_aff.add_radiobutton(
+            label=t("lang_en", lang), variable=self.lang_var, value="en", command=lambda: self.set_language("en")
+        )
         menubar.add_cascade(label=t("menu_view", lang), menu=m_aff)
 
         m_aide = tk.Menu(menubar, tearoff=0)
@@ -444,8 +460,7 @@ class TradeHelperApp:
 
     def _bind_shortcuts(self):
         r = self.root
-        tabs = [self.tab_analyse, self.tab_backtest, self.tab_screener, self.tab_portfolio,
-                self.tab_paper]
+        tabs = [self.tab_analyse, self.tab_backtest, self.tab_screener, self.tab_portfolio, self.tab_paper]
         for i, tab in enumerate(tabs, start=1):
             r.bind_all(f"<Control-Key-{i}>", lambda _=None, t=tab: self.notebook.select(t))
         r.bind_all("<Control-r>", lambda _=None: self.on_analyse())
@@ -467,19 +482,24 @@ class TradeHelperApp:
         dlg.title(t("shortcuts_title", self.lang))
         txt = scrolledtext.ScrolledText(dlg, width=52, height=20, wrap="word")
         txt.pack(padx=8, pady=8)
-        txt.insert("end", "\n".join([
-            "Ctrl+1..4 : changer d'onglet (Analyse / Backtest / Screener / Portefeuille)",
-            "Ctrl+R : lancer l'analyse de l'actif   Ctrl+B : lancer le backtest",
-            "Ctrl+S : lancer le screener   Ctrl+Shift+S : exporter le screener en CSV",
-            "Ctrl+E : exporter le graphique actif en PNG",
-            "Ctrl+H : historique des analyses   Ctrl+D : thème sombre / clair",
-            "Ctrl++ / Ctrl+- : agrandir / réduire le texte",
-            "Ctrl+Q : quitter   F1 : cette aide",
-            "",
-            "Souris : clic sur un en-tête de tableau = tri asc/desc ; double-clic sur une",
-            "ligne du screener = ouvrir l'actif dans l'onglet Analyse ; survol du",
-            "graphique de prix = réticule + OHLC de la barre.",
-        ]))
+        txt.insert(
+            "end",
+            "\n".join(
+                [
+                    "Ctrl+1..4 : changer d'onglet (Analyse / Backtest / Screener / Portefeuille)",
+                    "Ctrl+R : lancer l'analyse de l'actif   Ctrl+B : lancer le backtest",
+                    "Ctrl+S : lancer le screener   Ctrl+Shift+S : exporter le screener en CSV",
+                    "Ctrl+E : exporter le graphique actif en PNG",
+                    "Ctrl+H : historique des analyses   Ctrl+D : thème sombre / clair",
+                    "Ctrl++ / Ctrl+- : agrandir / réduire le texte",
+                    "Ctrl+Q : quitter   F1 : cette aide",
+                    "",
+                    "Souris : clic sur un en-tête de tableau = tri asc/desc ; double-clic sur une",
+                    "ligne du screener = ouvrir l'actif dans l'onglet Analyse ; survol du",
+                    "graphique de prix = réticule + OHLC de la barre.",
+                ]
+            ),
+        )
         txt.config(state="disabled")
         b_close = ttk.Button(dlg, command=dlg.destroy)
         self._set_text(b_close, "close")
@@ -491,13 +511,17 @@ class TradeHelperApp:
     # ------------------------------------------------------------- exports
     def _active_fig(self):
         tab = self.notebook.select()
-        return {str(self.tab_analyse): self.fig_a, str(self.tab_backtest): self.fig_bt,
-                str(self.tab_screener): self.fig_a, str(self.tab_portfolio): self.fig_pf}.get(tab, self.fig_a)
+        return {
+            str(self.tab_analyse): self.fig_a,
+            str(self.tab_backtest): self.fig_bt,
+            str(self.tab_screener): self.fig_a,
+            str(self.tab_portfolio): self.fig_pf,
+        }.get(tab, self.fig_a)
 
     def _ask_save(self, defaultextension: str, filetypes: list) -> str | None:
         return filedialog.asksaveasfilename(
-            parent=self.root, defaultextension=defaultextension, filetypes=filetypes,
-            title="Exporter sous...")
+            parent=self.root, defaultextension=defaultextension, filetypes=filetypes, title="Exporter sous..."
+        )
 
     def _export_png_active(self):
         path = self._ask_save(".png", [("Image PNG", "*.png")])
@@ -602,10 +626,9 @@ class TradeHelperApp:
     def _log_run(self, kind: str, symbol: str, summary: str, payload: dict):
         if self.store is None:
             return
-        try:
+        # l'historique ne doit jamais faire échouer un calcul
+        with contextlib.suppress(Exception):
             self.store.log_run(kind, symbol, summary, payload)
-        except Exception:
-            pass  # l'historique ne doit jamais faire échouer un calcul
 
     def _show_history(self):
         if self.store is None:
@@ -616,7 +639,7 @@ class TradeHelperApp:
         dlg.geometry("760x420")
         cols = ("date", "type", "symbole", "résumé")
         tree = ttk.Treeview(dlg, columns=cols, show="headings", height=16)
-        for c, w in zip(cols, (150, 110, 110, 380)):
+        for c, w in zip(cols, (150, 110, 110, 380), strict=True):
             tree.heading(c, text=c)
             tree.column(c, width=w)
         tree.pack(fill="both", expand=True, padx=8, pady=8)
@@ -628,9 +651,9 @@ class TradeHelperApp:
                 tree.insert("", "end", values=(r["created_at"], r["kind"], r["symbol"], r["summary"]))
 
         refresh()
-        b_clear = ttk.Button(dlg, command=lambda: (
-            self.store.clear_runs(), refresh(),
-            self.status.set("Historique effacé.")))
+        b_clear = ttk.Button(
+            dlg, command=lambda: (self.store.clear_runs(), refresh(), self.status.set("Historique effacé."))
+        )
         self._set_text(b_clear, "history_clear")
         b_clear.pack(pady=(0, 8))
         b_close2 = ttk.Button(dlg, command=dlg.destroy)
@@ -645,8 +668,9 @@ class TradeHelperApp:
         self._set_text(lbl, "analyse_strat_label")
         lbl.pack(side="left", padx=(0, 4))
         self.strat_var = tk.StringVar(value=list_strategies()[0]["key"])
-        self.strat_box = ttk.Combobox(top, values=[s["key"] for s in list_strategies()],
-                                      textvariable=self.strat_var, state="readonly", width=18)
+        self.strat_box = ttk.Combobox(
+            top, values=[s["key"] for s in list_strategies()], textvariable=self.strat_var, state="readonly", width=18
+        )
         self.strat_box.pack(side="left")
         self.btn_analyse = ttk.Button(top, command=self.on_analyse)
         self._set_text(self.btn_analyse, "btn_analyse")
@@ -686,8 +710,12 @@ class TradeHelperApp:
                 messagebox.showerror("Erreur", str(err))
                 return
             self.df, self.last_signals, self.adv = result
-            draw_price_chart(self.fig_a, self.df, self.last_signals,
-                             title=f"{vals['symbol']} — {vals['interval']} — stratégie {strat_key}")
+            draw_price_chart(
+                self.fig_a,
+                self.df,
+                self.last_signals,
+                title=f"{vals['symbol']} — {vals['interval']} — stratégie {strat_key}",
+            )
             self.canvas_a.draw_idle()
             self._attach_crosshair()
             self._fill_advice()
@@ -696,8 +724,10 @@ class TradeHelperApp:
                 plage = f" | base: {n_db} barres du {first.date()} au {last.date()}" if n_db else ""
             except Exception:
                 plage = ""
-            self.status.set(f"{vals['symbol']} : {len(self.df)} barres{plage}. "
-                            f"Avis : {self.adv['label']} (score {self.adv['score']:+.2f}).")
+            self.status.set(
+                f"{vals['symbol']} : {len(self.df)} barres{plage}. "
+                f"Avis : {self.adv['label']} (score {self.adv['score']:+.2f})."
+            )
 
         self._run_async(work, done)
 
@@ -718,9 +748,12 @@ class TradeHelperApp:
         if adv.get("earnings_date"):
             t.insert("end", f"Prochaine publication (résultats) : {adv['earnings_date']}\n")
         import datetime as dt
+
         for e in adv.get("cb_events", []):
             d = dt.date.fromisoformat(e["date"])
-            t.insert("end", f"Réunion banque centrale ({e['bank']}) : {d:%d/%m/%Y} (dans {(d - dt.date.today()).days} j)\n")
+            t.insert(
+                "end", f"Réunion banque centrale ({e['bank']}) : {d:%d/%m/%Y} (dans {(d - dt.date.today()).days} j)\n"
+            )
         if adv["stop_suggestion"]:
             t.insert("end", f"Stop suggéré (2x ATR) : {adv['stop_suggestion']:.2f}\n")
         t.insert("end", "\nDétail :\n")
@@ -737,8 +770,13 @@ class TradeHelperApp:
         self._set_text(l0, "strat_label")
         l0.grid(row=0, column=0, sticky="w", padx=4, pady=4)
         self.bt_strat_var = tk.StringVar(value=list_strategies()[0]["key"])
-        self.bt_strat_box = ttk.Combobox(mid, values=[s["key"] for s in list_strategies()],
-                                         textvariable=self.bt_strat_var, state="readonly", width=18)
+        self.bt_strat_box = ttk.Combobox(
+            mid,
+            values=[s["key"] for s in list_strategies()],
+            textvariable=self.bt_strat_var,
+            state="readonly",
+            width=18,
+        )
         self.bt_strat_box.grid(row=0, column=1, padx=4)
         self.bt_strat_box.bind("<<ComboboxSelected>>", lambda _=None: self._rebuild_params(mid))
         self._params_parent = mid
@@ -802,9 +840,11 @@ class TradeHelperApp:
         self.btn_bt = ttk.Button(mid, command=self.on_backtest)
         self._set_text(self.btn_bt, "btn_backtest")
         self.btn_bt.grid(row=6, column=0, padx=4, pady=6)
-        for col, key, cmd in ((1, "btn_walkforward", self.on_walkforward),
-                              (2, "btn_gridsearch", self.on_gridsearch),
-                              (3, "btn_montecarlo", self.on_montecarlo)):
+        for col, key, cmd in (
+            (1, "btn_walkforward", self.on_walkforward),
+            (2, "btn_gridsearch", self.on_gridsearch),
+            (3, "btn_montecarlo", self.on_montecarlo),
+        ):
             b = ttk.Button(mid, command=cmd)
             self._set_text(b, key)
             b.grid(row=6, column=col, padx=4)
@@ -844,7 +884,8 @@ class TradeHelperApp:
             e.grid(row=0, column=2 * j + 1)
             self.param_entries[k] = e
         ttk.Label(self.params_frame, text=meta["description"], foreground="#555").grid(
-            row=1, column=0, columnspan=12, sticky="w", padx=8, pady=(2, 4))
+            row=1, column=0, columnspan=12, sticky="w", padx=8, pady=(2, 4)
+        )
 
     def _strategy_params(self) -> dict:
         meta = next(s for s in list_strategies() if s["key"] == self.bt_strat_var.get())
@@ -865,9 +906,12 @@ class TradeHelperApp:
         preset = self.bt_fee.get()
         if preset == "custom":
             from ..fees import FeeModel
-            return FeeModel(f"Custom {self.bt_fee_flat.get()}€ + {self.bt_fee_pct.get()}%",
-                            flat=float(self.bt_fee_flat.get() or 0),
-                            pct=float(self.bt_fee_pct.get() or 0) / 100.0)
+
+            return FeeModel(
+                f"Custom {self.bt_fee_flat.get()}€ + {self.bt_fee_pct.get()}%",
+                flat=float(self.bt_fee_flat.get() or 0),
+                pct=float(self.bt_fee_pct.get() or 0) / 100.0,
+            )
         return get_fee_model(preset, source)
 
     def _bt_common(self):
@@ -896,8 +940,12 @@ class TradeHelperApp:
     def _show_bt_result(self, res, strat, vals, title_suffix=""):
         self.backtest_result = res
         self._bt_draw = (res, strat, vals, title_suffix)
-        draw_equity_chart(self.fig_bt, res.equity, res.trades,
-                          title=f"Equity — {strat.label} sur {vals['symbol']} ({vals['interval']}) {title_suffix}")
+        draw_equity_chart(
+            self.fig_bt,
+            res.equity,
+            res.trades,
+            title=f"Equity — {strat.label} sur {vals['symbol']} ({vals['interval']}) {title_suffix}",
+        )
         self.canvas_bt.draw_idle()
         m = res.metrics
         lines = [
@@ -917,12 +965,20 @@ class TradeHelperApp:
         self.bt_metrics.config(state="disabled")
         for i in self.bt_tree.get_children():
             self.bt_tree.delete(i)
-        for _, t in res.trades.iterrows():
-            self.bt_tree.insert("", "end", values=(
-                pd.Timestamp(t["entry_time"]).strftime("%Y-%m-%d %H:%M"),
-                pd.Timestamp(t["exit_time"]).strftime("%Y-%m-%d %H:%M"),
-                t["side"], f"{t['pnl']:+.2f}", f"{t['ret'] * 100:+.2f}",
-                int(t["bars"]), str(t["reason"])[:40]))
+        for _, tr in res.trades.iterrows():
+            self.bt_tree.insert(
+                "",
+                "end",
+                values=(
+                    pd.Timestamp(tr["entry_time"]).strftime("%Y-%m-%d %H:%M"),
+                    pd.Timestamp(tr["exit_time"]).strftime("%Y-%m-%d %H:%M"),
+                    tr["side"],
+                    f"{tr['pnl']:+.2f}",
+                    f"{tr['ret'] * 100:+.2f}",
+                    int(tr["bars"]),
+                    str(tr["reason"])[:40],
+                ),
+            )
 
     def on_backtest(self):
         vals, strat_key, strat_params, bt_opts = self._bt_common()
@@ -947,11 +1003,16 @@ class TradeHelperApp:
             res, strat = result
             self._show_bt_result(res, strat, vals)
             m = res.metrics
-            self._log_run("backtest", vals["symbol"],
-                          f"{strat_key} : {m['n_trades']} trades, "
-                          f"rendement {m['total_return'] * 100:+.2f} %, Sharpe {m['sharpe']:.2f}",
-                          {"strategy": strat_key, "params": strat_params, "metrics": m})
-            self.status.set(f"Backtest {vals['symbol']} terminé : {m['n_trades']} trades, rendement {m['total_return'] * 100:+.2f} %, frais {m.get('total_fees', 0):.2f}.")
+            self._log_run(
+                "backtest",
+                vals["symbol"],
+                f"{strat_key} : {m['n_trades']} trades, "
+                f"rendement {m['total_return'] * 100:+.2f} %, Sharpe {m['sharpe']:.2f}",
+                {"strategy": strat_key, "params": strat_params, "metrics": m},
+            )
+            self.status.set(
+                f"Backtest {vals['symbol']} terminé : {m['n_trades']} trades, rendement {m['total_return'] * 100:+.2f} %, frais {m.get('total_fees', 0):.2f}."
+            )
 
         self._run_async(work, done)
 
@@ -967,9 +1028,15 @@ class TradeHelperApp:
                 for k, v in strat_params.items():
                     if k not in grid:
                         grid[k] = [v]
-            res = walk_forward(df, strat_key, params=strat_params, param_grid=grid,
-                               n_splits=5, **{k: v for k, v in bt_opts.items() if k != "periods_per_year"},
-                               periods_per_year=bt_opts["periods_per_year"])
+            res = walk_forward(
+                df,
+                strat_key,
+                params=strat_params,
+                param_grid=grid,
+                n_splits=5,
+                **{k: v for k, v in bt_opts.items() if k != "periods_per_year"},
+                periods_per_year=bt_opts["periods_per_year"],
+            )
             return res, df
 
         def done(result, err):
@@ -981,22 +1048,30 @@ class TradeHelperApp:
             res, df = result
             oos = res["oos_metrics"]
             ins = res["in_sample_metrics"]
-            lines = [f"WALK-FORWARD — {vals['symbol']} ({len(res['splits'])} blocs OOS)",
-                     f"OOS : rendement {oos.get('total_return', 0) * 100:+.2f} %   Sharpe {oos.get('sharpe', 0):+.2f}   DD max {oos.get('max_drawdown', 0) * 100:.2f} %   trades {oos.get('n_trades', 0)}",
-                     f"In-sample (référence) : rendement {ins['total_return'] * 100:+.2f} %   Sharpe {ins['sharpe']:+.2f}",
-                     "Écart OOS vs in-sample = mesure d'overfitting (plus il est grand, plus la stratégie est fragile).", ""]
+            lines = [
+                f"WALK-FORWARD — {vals['symbol']} ({len(res['splits'])} blocs OOS)",
+                f"OOS : rendement {oos.get('total_return', 0) * 100:+.2f} %   Sharpe {oos.get('sharpe', 0):+.2f}   DD max {oos.get('max_drawdown', 0) * 100:.2f} %   trades {oos.get('n_trades', 0)}",
+                f"In-sample (référence) : rendement {ins['total_return'] * 100:+.2f} %   Sharpe {ins['sharpe']:+.2f}",
+                "Écart OOS vs in-sample = mesure d'overfitting (plus il est grand, plus la stratégie est fragile).",
+                "",
+            ]
             for s in res["splits"]:
                 p = ", ".join(f"{k}={v}" for k, v in s["params"].items())
-                lines.append(f"  bloc {pd.Timestamp(s['test_start']):%Y-%m-%d} → {pd.Timestamp(s['test_end']):%Y-%m-%d} : "
-                             f"params [{p}]  train_sharpe={s.get('train_sharpe', 0):+.2f}  test_ret={s['test_return'] * 100:+.2f} %  trades={s['test_trades']}")
+                lines.append(
+                    f"  bloc {pd.Timestamp(s['test_start']):%Y-%m-%d} → {pd.Timestamp(s['test_end']):%Y-%m-%d} : "
+                    f"params [{p}]  train_sharpe={s.get('train_sharpe', 0):+.2f}  test_ret={s['test_return'] * 100:+.2f} %  trades={s['test_trades']}"
+                )
             self.bt_metrics.config(state="normal")
             self.bt_metrics.delete("1.0", "end")
             self.bt_metrics.insert("end", "\n".join(lines))
             self.bt_metrics.config(state="disabled")
-            draw_equity_chart(self.fig_bt, res["oos_equity"], None,
-                              title=f"Equity OUT-OF-SAMPLE — {vals['symbol']} (walk-forward)")
+            draw_equity_chart(
+                self.fig_bt, res["oos_equity"], None, title=f"Equity OUT-OF-SAMPLE — {vals['symbol']} (walk-forward)"
+            )
             self.canvas_bt.draw_idle()
-            self.status.set(f"Walk-forward terminé : {len(res['splits'])} blocs, Sharpe OOS {oos.get('sharpe', 0):+.2f} vs in-sample {ins['sharpe']:+.2f}.")
+            self.status.set(
+                f"Walk-forward terminé : {len(res['splits'])} blocs, Sharpe OOS {oos.get('sharpe', 0):+.2f} vs in-sample {ins['sharpe']:+.2f}."
+            )
 
         self._run_async(work, done)
 
@@ -1004,16 +1079,27 @@ class TradeHelperApp:
         vals, strat_key, strat_params, bt_opts = self._bt_common()
         self._progress_begin()
         self.status.set(f"Grid search sur {vals['symbol']}...")
-        grid = {"fast": [5, 8, 12, 20], "slow": [26, 40, 60], "trend_filter": [True, False]} \
-            if strat_key == "ma_cross" else {"window": [10, 20, 30]} if strat_key == "donchian_breakout" \
-            else {"period": [7, 14, 21], "oversold": [25, 30, 35]} if strat_key == "rsi_reversion" \
+        grid = (
+            {"fast": [5, 8, 12, 20], "slow": [26, 40, 60], "trend_filter": [True, False]}
+            if strat_key == "ma_cross"
+            else {"window": [10, 20, 30]}
+            if strat_key == "donchian_breakout"
+            else {"period": [7, 14, 21], "oversold": [25, 30, 35]}
+            if strat_key == "rsi_reversion"
             else {"fast": [8, 12], "slow": [21, 26, 34]}
+        )
 
         def work():
             df = self._load_df(vals)
-            return grid_search(df, strat_key, grid, fee=bt_opts["fee"],
-                               slippage=bt_opts["slippage"],
-                               periods_per_year=bt_opts["periods_per_year"], top=10)
+            return grid_search(
+                df,
+                strat_key,
+                grid,
+                fee=bt_opts["fee"],
+                slippage=bt_opts["slippage"],
+                periods_per_year=bt_opts["periods_per_year"],
+                top=10,
+            )
 
         def done(result, err):
             self._progress_end()
@@ -1025,16 +1111,23 @@ class TradeHelperApp:
             if out.empty:
                 self.status.set("Grid search : aucune configuration valide.")
                 return
-            lines = [f"GRID SEARCH — {vals['symbol']} — top {len(out)} configurations (score = Sharpe pénalisé par l'instabilité vs voisins)", ""]
+            lines = [
+                f"GRID SEARCH — {vals['symbol']} — top {len(out)} configurations (score = Sharpe pénalisé par l'instabilité vs voisins)",
+                "",
+            ]
             for _, r in out.head(10).iterrows():
-                params = {k: r[k] for k in grid.keys()}
-                lines.append(f"  {params}  → sharpe={r['sharpe']:+.2f} (voisins {r['neighbor_sharpe']:+.2f})  ret={r['total_return'] * 100:+.1f}%  "
-                             f"DD={r['max_drawdown'] * 100:.1f}%  trades={int(r['n_trades'])}  score={r['score']:+.2f}")
+                params = {k: r[k] for k in grid}
+                lines.append(
+                    f"  {params}  → sharpe={r['sharpe']:+.2f} (voisins {r['neighbor_sharpe']:+.2f})  ret={r['total_return'] * 100:+.1f}%  "
+                    f"DD={r['max_drawdown'] * 100:.1f}%  trades={int(r['n_trades'])}  score={r['score']:+.2f}"
+                )
             self.bt_metrics.config(state="normal")
             self.bt_metrics.delete("1.0", "end")
             self.bt_metrics.insert("end", "\n".join(lines))
             self.bt_metrics.config(state="disabled")
-            self.status.set(f"Grid search terminé : {len(out)} configs testées, meilleure : {out.iloc[0][list(grid.keys())].to_dict()}.")
+            self.status.set(
+                f"Grid search terminé : {len(out)} configs testées, meilleure : {out.iloc[0][list(grid.keys())].to_dict()}."
+            )
 
         self._run_async(work, done)
 
@@ -1047,8 +1140,7 @@ class TradeHelperApp:
         self.status.set("Monte Carlo sur les trades...")
 
         def work():
-            return monte_carlo_trades(res.trades, initial_capital=res.params["initial_capital"],
-                                      n_sims=1000, seed=42)
+            return monte_carlo_trades(res.trades, initial_capital=res.params["initial_capital"], n_sims=1000, seed=42)
 
         def done(mc, err):
             self._progress_end()
@@ -1068,7 +1160,9 @@ class TradeHelperApp:
             self.bt_metrics.delete("1.0", "end")
             self.bt_metrics.insert("end", "\n".join(lines))
             self.bt_metrics.config(state="disabled")
-            self.status.set(f"Monte Carlo : proba de profit {mc['prob_profit'] * 100:.1f} %, médiane {mc['p50_final']:.0f}.")
+            self.status.set(
+                f"Monte Carlo : proba de profit {mc['prob_profit'] * 100:.1f} %, médiane {mc['p50_final']:.0f}."
+            )
 
         self._run_async(work, done)
 
@@ -1082,8 +1176,7 @@ class TradeHelperApp:
         lps = ttk.Label(top)
         self._set_text(lps, "strat_label")
         lps.pack(side="left", padx=(12, 2))
-        self.pf_strat = ttk.Combobox(top, values=[s["key"] for s in list_strategies()],
-                                     state="readonly", width=18)
+        self.pf_strat = ttk.Combobox(top, values=[s["key"] for s in list_strategies()], state="readonly", width=18)
         self.pf_strat.set("ma_cross")
         self.pf_strat.pack(side="left")
         lpf = ttk.Label(top)
@@ -1138,9 +1231,14 @@ class TradeHelperApp:
 
         def work():
             dfs = {s: self._load_df({**vals, "symbol": s}) for s in symbols}
-            return run_portfolio(dfs, strategy_key=strat_key, initial_capital=capital,
-                                 fee=fee, slippage=slippage,
-                                 periods_per_year=periods_per_year(vals["interval"], vals["source"]))
+            return run_portfolio(
+                dfs,
+                strategy_key=strat_key,
+                initial_capital=capital,
+                fee=fee,
+                slippage=slippage,
+                periods_per_year=periods_per_year(vals["interval"], vals["source"]),
+            )
 
         def done(result, err):
             self._progress_end()
@@ -1150,29 +1248,38 @@ class TradeHelperApp:
                 messagebox.showerror("Erreur portefeuille", str(err))
                 return
             res = result
-            draw_equity_chart(self.fig_pf, res.equity, res.trades,
-                              title=f"Equity portefeuille — {len(symbols)} actifs — {strat_key}")
+            draw_equity_chart(
+                self.fig_pf, res.equity, res.trades, title=f"Equity portefeuille — {len(symbols)} actifs — {strat_key}"
+            )
             self.canvas_pf.draw_idle()
             m = res.metrics
-            corr_lines = [f"  {a} : " + ", ".join(f"{b}={res.correlation.loc[a, b]:+.2f}"
-                                                  for b in res.correlation.columns)
-                          for a in res.correlation.index]
+            corr_lines = [
+                f"  {a} : " + ", ".join(f"{b}={res.correlation.loc[a, b]:+.2f}" for b in res.correlation.columns)
+                for a in res.correlation.index
+            ]
             lines = [
                 f"PORTEFEUILLE — {len(symbols)} actifs ({vals['source']}, {vals['interval']}, {vals['period']}) — stratégie {strat_key}",
                 f"Frais : {fee.describe()}",
                 f"Rendement total : {m['total_return'] * 100:+.2f} %   CAGR : {m['cagr'] * 100:+.2f} %   Frais payés : {m.get('total_fees', 0):.2f}",
                 f"Sharpe : {m['sharpe']:.2f}   DD max : {m['max_drawdown'] * 100:.2f} %   Win rate : {m['win_rate'] * 100:.1f} %   Trades : {m['n_trades']}",
-                "", "Corrélation des rendements journaliers :", *corr_lines,
+                "",
+                "Corrélation des rendements journaliers :",
+                *corr_lines,
             ]
             self.pf_metrics.config(state="normal")
             self.pf_metrics.delete("1.0", "end")
             self.pf_metrics.insert("end", "\n".join(lines))
             self.pf_metrics.config(state="disabled")
-            self.status.set(f"Portefeuille terminé : rendement {m['total_return'] * 100:+.2f} %, Sharpe {m['sharpe']:.2f}.")
-            self._log_run("portefeuille", ",".join(symbols),
-                          f"{len(symbols)} actifs, {strat_key} : rendement {m['total_return'] * 100:+.2f} %, "
-                          f"Sharpe {m['sharpe']:.2f}, DD max {m['max_drawdown'] * 100:.2f} %",
-                          {"strategy": strat_key, "symbols": symbols, "metrics": m})
+            self.status.set(
+                f"Portefeuille terminé : rendement {m['total_return'] * 100:+.2f} %, Sharpe {m['sharpe']:.2f}."
+            )
+            self._log_run(
+                "portefeuille",
+                ",".join(symbols),
+                f"{len(symbols)} actifs, {strat_key} : rendement {m['total_return'] * 100:+.2f} %, "
+                f"Sharpe {m['sharpe']:.2f}, DD max {m['max_drawdown'] * 100:.2f} %",
+                {"strategy": strat_key, "symbols": symbols, "metrics": m},
+            )
 
         self._run_async(work, done)
 
@@ -1199,16 +1306,17 @@ class TradeHelperApp:
         self.paper_broker = ttk.Combobox(top, values=["paper", "ibkr"], state="readonly", width=8)
         self.paper_broker.set("paper")
         self.paper_broker.pack(side="left")
-        for key, cmd in (("paper_open", self._paper_open_current),
-                         ("paper_sync", self._paper_sync_screener),
-                         ("paper_close", self._paper_close_selected),
-                         ("paper_reset", self._paper_reset)):
+        for key, cmd in (
+            ("paper_open", self._paper_open_current),
+            ("paper_sync", self._paper_sync_screener),
+            ("paper_close", self._paper_close_selected),
+            ("paper_reset", self._paper_reset),
+        ):
             b = ttk.Button(top, command=cmd)
             self._set_text(b, key)
             b.pack(side="left", padx=6)
         self.paper_metrics_var = tk.StringVar(value="")
-        ttk.Label(self.tab_paper, textvariable=self.paper_metrics_var, style="Status.TLabel").pack(
-            anchor="w", padx=6)
+        ttk.Label(self.tab_paper, textvariable=self.paper_metrics_var, style="Status.TLabel").pack(anchor="w", padx=6)
 
         paned = ttk.PanedWindow(self.tab_paper, orient="horizontal")
         paned.pack(fill="both", expand=True, padx=6, pady=4)
@@ -1219,7 +1327,7 @@ class TradeHelperApp:
         lp.pack(anchor="w")
         cols = ("id", "symbole", "sens", "qté", "entrée", "stop", "objectif", "stratégie", "pnl_latent")
         self.paper_tree = ttk.Treeview(left, columns=cols, show="headings", height=10)
-        for c, w in zip(cols, (40, 90, 55, 70, 80, 80, 80, 150, 90)):
+        for c, w in zip(cols, (40, 90, 55, 70, 80, 80, 80, 150, 90), strict=True):
             self.paper_tree.heading(c, text=c)
             self.paper_tree.column(c, width=w)
         self.paper_tree.pack(fill="both", expand=True, pady=2)
@@ -1229,7 +1337,7 @@ class TradeHelperApp:
         lt.pack(anchor="w", pady=(6, 0))
         tcols = ("id", "symbole", "entrée", "sortie", "prix_sortie", "pnl", "raison")
         self.trades_tree = ttk.Treeview(left, columns=tcols, show="headings", height=8)
-        for c, w in zip(tcols, (40, 90, 150, 150, 80, 80, 200)):
+        for c, w in zip(tcols, (40, 90, 150, 150, 80, 80, 200), strict=True):
             self.trades_tree.heading(c, text=c)
             self.trades_tree.column(c, width=w)
         self.trades_tree.pack(fill="both", expand=True, pady=2)
@@ -1242,15 +1350,14 @@ class TradeHelperApp:
         lj.pack(anchor="w")
         jcols = ("date", "symbole", "type", "note")
         self.journal_tree = ttk.Treeview(right, columns=jcols, show="headings", height=12)
-        for c, w in zip(jcols, (140, 80, 60, 160)):
+        for c, w in zip(jcols, (140, 80, 60, 160), strict=True):
             self.journal_tree.heading(c, text=c)
             self.journal_tree.column(c, width=w)
         self.journal_tree.pack(fill="both", expand=True, pady=2)
         form = ttk.Frame(right)
         form.pack(fill="x", pady=4)
         self.journal_symbol = ttk.Entry(form, width=10)
-        self.journal_kind = ttk.Combobox(form, values=["note", "entrée", "sortie", "idée"],
-                                         state="readonly", width=8)
+        self.journal_kind = ttk.Combobox(form, values=["note", "entrée", "sortie", "idée"], state="readonly", width=8)
         self.journal_kind.set("note")
         self.journal_text = ttk.Entry(form, width=34)
         self.journal_image = ttk.Entry(form, width=20)
@@ -1275,31 +1382,54 @@ class TradeHelperApp:
         if self.pf is None:
             self.paper_metrics_var.set("Paper désactivé (store indisponible).")
             return
-        prices = {s: float(r["last_close"]) for s, r in self.screener_rows.items()
-                  if isinstance(r.get("last_close"), (int, float))}
+        prices = {
+            s: float(r["last_close"])
+            for s, r in self.screener_rows.items()
+            if isinstance(r.get("last_close"), (int, float))
+        }
         st = self.pf.stats(prices)
         for tree in (self.paper_tree, self.trades_tree):
             for i in tree.get_children():
                 tree.delete(i)
         for p in self.pf.open_positions():
             px = prices.get(p["symbol"], p["entry_price"])
-            latent = (px - p["entry_price"]) * p["qty"] if p["side"] == "long" \
-                else (p["entry_price"] - px) * p["qty"]
-            self.paper_tree.insert("", "end", values=(
-                p["id"], p["symbol"], p["side"], f"{p['qty']:.4f}", f"{p['entry_price']:.2f}",
-                f"{p['stop']:.2f}" if p["stop"] else "", f"{p['target']:.2f}" if p["target"] else "",
-                p["strategy"] or "", f"{latent:+.2f}"))
-        for t in self.pf.closed_trades():
-            self.trades_tree.insert("", "end", values=(
-                t["id"], t["symbol"], t["entry_time"], t["exit_time"],
-                f"{t['exit_price']:.2f}", f"{t['pnl']:+.2f}" if t["pnl"] is not None else "",
-                (t["exit_reason"] or "")[:40]))
+            latent = (px - p["entry_price"]) * p["qty"] if p["side"] == "long" else (p["entry_price"] - px) * p["qty"]
+            self.paper_tree.insert(
+                "",
+                "end",
+                values=(
+                    p["id"],
+                    p["symbol"],
+                    p["side"],
+                    f"{p['qty']:.4f}",
+                    f"{p['entry_price']:.2f}",
+                    f"{p['stop']:.2f}" if p["stop"] else "",
+                    f"{p['target']:.2f}" if p["target"] else "",
+                    p["strategy"] or "",
+                    f"{latent:+.2f}",
+                ),
+            )
+        for tr in self.pf.closed_trades():
+            self.trades_tree.insert(
+                "",
+                "end",
+                values=(
+                    tr["id"],
+                    tr["symbol"],
+                    tr["entry_time"],
+                    tr["exit_time"],
+                    f"{tr['exit_price']:.2f}",
+                    f"{tr['pnl']:+.2f}" if tr["pnl"] is not None else "",
+                    (tr["exit_reason"] or "")[:40],
+                ),
+            )
         wr = f"{st['win_rate'] * 100:.0f} %" if st["win_rate"] is not None else "-"
         self.paper_metrics_var.set(
             f"Trésorerie : {st['cash']:.2f}   Equity : {st['equity']:.2f}   "
             f"P&L latent : {st['latent_pnl']:+.2f}   Rendement : {st['total_return'] * 100:+.2f} %   "
             f"Positions ouvertes : {st['n_open']}   Trades clôturés : {st['n_closed']} (win rate {wr})   "
-            f"P&L réalisé : {st['realized_pnl']:+.2f}")
+            f"P&L réalisé : {st['realized_pnl']:+.2f}"
+        )
 
     def _paper_open_current(self):
         if self.pf is None:
@@ -1311,13 +1441,23 @@ class TradeHelperApp:
         try:
             self.pf.max_positions = max(1, int(self.paper_maxpos.get() or 5))
             pos = self.pf.open_position(
-                vals["symbol"], vals["source"], float(self.adv["last_close"]), side="long",
+                vals["symbol"],
+                vals["source"],
+                float(self.adv["last_close"]),
+                side="long",
                 stop=self.adv.get("stop_suggestion"),
-                strategy=self.strat_var.get(), reason=f"manuel ({self.adv['label']})")
-            self._log_run("paper", vals["symbol"],
-                          f"ouverture {pos['qty']:.4f} @ {pos['entry_price']:.2f}, stop {pos['stop']}",
-                          {"side": "long", **{k: pos[k] for k in ("symbol", "qty", "entry_price", "stop", "target")}})
-            self.status.set(f"Paper : position ouverte sur {vals['symbol']} ({pos['qty']:.4f} @ {pos['entry_price']:.2f}).")
+                strategy=self.strat_var.get(),
+                reason=f"manuel ({self.adv['label']})",
+            )
+            self._log_run(
+                "paper",
+                vals["symbol"],
+                f"ouverture {pos['qty']:.4f} @ {pos['entry_price']:.2f}, stop {pos['stop']}",
+                {"side": "long", **{k: pos[k] for k in ("symbol", "qty", "entry_price", "stop", "target")}},
+            )
+            self.status.set(
+                f"Paper : position ouverte sur {vals['symbol']} ({pos['qty']:.4f} @ {pos['entry_price']:.2f})."
+            )
         except PaperError as exc:
             messagebox.showerror("Paper", str(exc))
         self._paper_refresh()
@@ -1346,13 +1486,20 @@ class TradeHelperApp:
                 return
             n_open = len(result["opened"])
             n_close = len(result["closed"])
-            self._log_run("paper", "multi",
-                          f"sync scan : {n_open} ouverture(s), {n_close} clôture(s)",
-                          {"opened": [p["symbol"] for p in result["opened"]],
-                           "closed": [{"symbol": p["symbol"], "pnl": p["pnl"], "reason": p["exit_reason"]}
-                                      for p in result["closed"]]})
-            self.status.set(f"Paper synchronisé : {n_open} ouverture(s), {n_close} clôture(s), "
-                            f"ignorés : {len(result['skipped'])}.")
+            self._log_run(
+                "paper",
+                "multi",
+                f"sync scan : {n_open} ouverture(s), {n_close} clôture(s)",
+                {
+                    "opened": [p["symbol"] for p in result["opened"]],
+                    "closed": [
+                        {"symbol": p["symbol"], "pnl": p["pnl"], "reason": p["exit_reason"]} for p in result["closed"]
+                    ],
+                },
+            )
+            self.status.set(
+                f"Paper synchronisé : {n_open} ouverture(s), {n_close} clôture(s), ignorés : {len(result['skipped'])}."
+            )
             self._paper_refresh()
 
         self._run_async(work, done)
@@ -1373,8 +1520,12 @@ class TradeHelperApp:
             price = pos["entry_price"]
         try:
             closed = self.pf.close_position(pid, price, reason="clôture manuelle")
-            self._log_run("paper", sym, f"clôture @ {price:.2f}, P&L {closed['pnl']:+.2f}",
-                          {"symbol": sym, "exit_price": price, "pnl": closed["pnl"]})
+            self._log_run(
+                "paper",
+                sym,
+                f"clôture @ {price:.2f}, P&L {closed['pnl']:+.2f}",
+                {"symbol": sym, "exit_price": price, "pnl": closed["pnl"]},
+            )
             self.status.set(f"Paper : {sym} clôturé à {price:.2f} (P&L {closed['pnl']:+.2f}).")
         except PaperError as exc:
             messagebox.showerror("Paper", str(exc))
@@ -1398,8 +1549,7 @@ class TradeHelperApp:
         if not text:
             return
         sym = self.journal_symbol.get().strip().upper() or None
-        self.store.journal_add(sym, self.journal_kind.get(), text,
-                               self.journal_image.get().strip() or None)
+        self.store.journal_add(sym, self.journal_kind.get(), text, self.journal_image.get().strip() or None)
         self.journal_text.delete(0, "end")
         self._journal_refresh()
 
@@ -1420,8 +1570,9 @@ class TradeHelperApp:
             self.journal_tree.delete(i)
         for e in self.store.journal_list(300):
             note = e["text"] + (f"  [img: {e['image_path']}]" if e["image_path"] else "")
-            self.journal_tree.insert("", "end", tags=(e["id"],), values=(
-                e["created_at"], e["symbol"] or "", e["kind"], note[:120]))
+            self.journal_tree.insert(
+                "", "end", tags=(e["id"],), values=(e["created_at"], e["symbol"] or "", e["kind"], note[:120])
+            )
 
     # ------------------------------------------------------------- onglet 3
     def _build_screener_tab(self):
@@ -1445,8 +1596,9 @@ class TradeHelperApp:
         self._set_text(self.advice_frame, "advice_frame")
         self.advice_frame.pack(fill="x", padx=6, pady=4)
         self.scr_advice_var = tk.StringVar(value=t("advice_wait", self.lang))
-        ttk.Label(self.advice_frame, textvariable=self.scr_advice_var,
-                  wraplength=1150, justify="left").pack(anchor="w", padx=6, pady=4)
+        ttk.Label(self.advice_frame, textvariable=self.scr_advice_var, wraplength=1150, justify="left").pack(
+            anchor="w", padx=6, pady=4
+        )
         lbl_scr = ttk.Label(self.tab_screener)
         self._set_text(lbl_scr, "screener_symbols_label")
         lbl_scr.pack(anchor="w", padx=6)
@@ -1463,19 +1615,46 @@ class TradeHelperApp:
         self.watch_listbox.bind("<Double-Button-1>", lambda _=None: self._watch_load())
         wbtns = ttk.Frame(wf)
         wbtns.pack(side="left", fill="y", padx=4, pady=4)
-        for key, cmd in (("watch_add", self._watch_add_current),
-                         ("watch_remove", self._watch_remove_selected),
-                         ("watch_load", self._watch_load)):
+        for key, cmd in (
+            ("watch_add", self._watch_add_current),
+            ("watch_remove", self._watch_remove_selected),
+            ("watch_load", self._watch_load),
+        ):
             b = ttk.Button(wbtns, command=cmd)
             self._set_text(b, key)
             b.pack(fill="x", pady=1)
         self._watch_refresh()
-        cols = ("symbole", "type", "cours", "avis", "stratégie", "sharpe", "ret%", "trades",
-                "position", "horizon", "entrée", "stop", "objectif")
+        cols = (
+            "symbole",
+            "type",
+            "cours",
+            "avis",
+            "stratégie",
+            "sharpe",
+            "ret%",
+            "trades",
+            "position",
+            "horizon",
+            "entrée",
+            "stop",
+            "objectif",
+        )
         self.scr_tree = ttk.Treeview(self.tab_screener, columns=cols, show="headings", height=18)
-        widths = {"symbole": 90, "type": 60, "cours": 80, "avis": 150, "stratégie": 170, "sharpe": 60,
-                  "ret%": 70, "trades": 55, "position": 90, "horizon": 70, "entrée": 80,
-                  "stop": 80, "objectif": 80}
+        widths = {
+            "symbole": 90,
+            "type": 60,
+            "cours": 80,
+            "avis": 150,
+            "stratégie": 170,
+            "sharpe": 60,
+            "ret%": 70,
+            "trades": 55,
+            "position": 90,
+            "horizon": 70,
+            "entrée": 80,
+            "stop": 80,
+            "objectif": 80,
+        }
         for c in cols:
             self.scr_tree.heading(c, text=c)
             self.scr_tree.column(c, width=widths[c])
@@ -1514,10 +1693,12 @@ class TradeHelperApp:
                     if done > 0:
                         eta = el * (total - done) / done
                         self.scr_progress.config(
-                            text=f"{done}/{total} — {sym} — {phase} — écoulé {el:.0f} s — ETA ~{eta:.0f} s")
+                            text=f"{done}/{total} — {sym} — {phase} — écoulé {el:.0f} s — ETA ~{eta:.0f} s"
+                        )
                     else:
                         self.scr_progress.config(
-                            text=f"0/{total} — {sym or 'démarrage'} — {phase or 'démarrage du calcul…'}")
+                            text=f"0/{total} — {sym or 'démarrage'} — {phase or 'démarrage du calcul…'}"
+                        )
             except queue.Empty:
                 pass
             if not finished["done"]:
@@ -1525,7 +1706,10 @@ class TradeHelperApp:
 
         def work():
             return screen_assets(
-                vals["source"], symbols, period=vals["period"], interval=vals["interval"],
+                vals["source"],
+                symbols,
+                period=vals["period"],
+                interval=vals["interval"],
                 backend=vals.get("backend", "auto"),
                 on_progress=lambda d, t, s, p="": prog_q.put(("step", d, t, s, p)),
             )
@@ -1548,37 +1732,72 @@ class TradeHelperApp:
                 return (isinstance(s, str), -(s if not isinstance(s, str) else 0))
 
             for r in sorted(result, key=sort_key):
-                self.scr_tree.insert("", "end", values=(
-                    r["symbol"], r.get("type", ""), r["last_close"], r["label"], r["strategy_label"],
-                    r["sharpe"], f"{r['total_return'] * 100:+.1f}" if isinstance(r["total_return"], float) else r["total_return"],
-                    r["n_trades"], r["position"], r["horizon"], r["entry"], r["stop"], r["target"]))
+                self.scr_tree.insert(
+                    "",
+                    "end",
+                    values=(
+                        r["symbol"],
+                        r.get("type", ""),
+                        r["last_close"],
+                        r["label"],
+                        r["strategy_label"],
+                        r["sharpe"],
+                        f"{r['total_return'] * 100:+.1f}"
+                        if isinstance(r["total_return"], float)
+                        else r["total_return"],
+                        r["n_trades"],
+                        r["position"],
+                        r["horizon"],
+                        r["entry"],
+                        r["stop"],
+                        r["target"],
+                    ),
+                )
             n_ok = sum(1 for r in result if not r["error"])
             from ..compute import gpu_info
+
             be = vals.get("backend", "auto")
             if be == "cuda" and gpu_info() is None:
                 be_label = "CPU (repli : 'cuda' demandé mais aucune carte CUDA détectée)"
             else:
                 be_used = detect_backend() if be == "auto" else be
                 be_label = backend_label(be_used)
-            self.status.set(f"Screener terminé : {n_ok}/{len(result)} actifs analysés "
-                            f"({vals['source']}, {vals['interval']}) — calcul : {be_label}. "
-                            f"Double-clic pour ouvrir un actif.")
+            self.status.set(
+                f"Screener terminé : {n_ok}/{len(result)} actifs analysés "
+                f"({vals['source']}, {vals['interval']}) — calcul : {be_label}. "
+                f"Double-clic pour ouvrir un actif."
+            )
             pick = top_pick(result)
             if pick:
                 self.scr_advice_var.set(
                     f"À ACHETER aujourd'hui : {pick['symbol']} à ~{pick['entry']} — "
                     f"stop {pick['stop']}, objectif {pick['target']}, horizon {pick['horizon']}. "
-                    f"{pick['why']}.")
+                    f"{pick['why']}."
+                )
             else:
                 self.scr_advice_var.set(
-                    "Aucun candidat acheteur pertinent aujourd'hui : rester en liquidités / attendre.")
-            self._log_run("screener", vals["symbol"] or "multi",
-                          f"{n_ok}/{len(result)} actifs analysés ({vals['source']}, {vals['interval']}), "
-                          f"conseil : {pick['symbol'] if pick else 'aucun'}",
-                          {"source": vals["source"], "interval": vals["interval"], "n": len(result),
-                           "n_ok": n_ok, "top_pick": pick["symbol"] if pick else None,
-                           "rows": [{k: r.get(k) for k in ("symbol", "type", "score", "label", "position",
-                                                          "best_strategy", "sharpe")} for r in result]})
+                    "Aucun candidat acheteur pertinent aujourd'hui : rester en liquidités / attendre."
+                )
+            self._log_run(
+                "screener",
+                vals["symbol"] or "multi",
+                f"{n_ok}/{len(result)} actifs analysés ({vals['source']}, {vals['interval']}), "
+                f"conseil : {pick['symbol'] if pick else 'aucun'}",
+                {
+                    "source": vals["source"],
+                    "interval": vals["interval"],
+                    "n": len(result),
+                    "n_ok": n_ok,
+                    "top_pick": pick["symbol"] if pick else None,
+                    "rows": [
+                        {
+                            k: r.get(k)
+                            for k in ("symbol", "type", "score", "label", "position", "best_strategy", "sharpe")
+                        }
+                        for r in result
+                    ],
+                },
+            )
 
         self.root.after(100, poll_progress)
         self._run_async(work, done)
@@ -1604,9 +1823,11 @@ class TradeHelperApp:
             self._rebuild_params(self._params_parent)
         self.notebook.select(self.tab_analyse)
         self.on_analyse()
-        self.status.set(f"{symbol} chargé (stratégie recommandée : {row.get('best_strategy')}). "
-                        f"Position : {row.get('position')}, horizon {row.get('horizon')}, "
-                        f"entrée {row.get('entry')}, stop {row.get('stop')}, objectif {row.get('target')}.")
+        self.status.set(
+            f"{symbol} chargé (stratégie recommandée : {row.get('best_strategy')}). "
+            f"Position : {row.get('position')}, horizon {row.get('horizon')}, "
+            f"entrée {row.get('entry')}, stop {row.get('stop')}, objectif {row.get('target')}."
+        )
 
 
 def main():

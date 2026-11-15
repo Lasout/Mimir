@@ -9,8 +9,9 @@ from tradehelper.gui.i18n import LANGS, STRINGS, get_lang, t
 
 class TestI18n(unittest.TestCase):
     def test_parite_fr_en(self):
-        self.assertEqual(set(STRINGS["fr"]), set(STRINGS["en"]),
-                         f"clés différentes: {set(STRINGS['fr']) ^ set(STRINGS['en'])}")
+        self.assertEqual(
+            set(STRINGS["fr"]), set(STRINGS["en"]), f"clés différentes: {set(STRINGS['fr']) ^ set(STRINGS['en'])}"
+        )
 
     def test_langues(self):
         self.assertEqual(LANGS, ("fr", "en"))

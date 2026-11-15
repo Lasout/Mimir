@@ -5,10 +5,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tradehelper.data.events import (ECB_CAL_URL, FED_CAL_URL, fetch_central_bank_events,
-                                     parse_ecb_calendar, parse_fed_calendar)
-from tradehelper.data.store import Store
 from tradehelper.config import DEFAULTS
+from tradehelper.data.events import (
+    ECB_CAL_URL,
+    FED_CAL_URL,
+    fetch_central_bank_events,
+    parse_ecb_calendar,
+    parse_fed_calendar,
+)
+from tradehelper.data.store import Store
 
 FED_FIXTURE = """
 <html><body><h2>2026 FOMC Meetings</h2>
@@ -77,10 +82,13 @@ class TestFetchCbEvents(unittest.TestCase):
                 past = dt.date.today() - dt.timedelta(days=30)
                 soon = dt.date.today() + dt.timedelta(days=10)
                 far = dt.date.today() + dt.timedelta(days=200)
+
                 def fmt(d):
                     return d.strftime("%B ") + f"{d.day}-{(d + dt.timedelta(days=1)).day}, {d.year}"
+
                 return f"<h2>{past.year} FOMC Meetings</h2><ul><li>{fmt(past)}</li><li>{fmt(soon)}</li><li>{fmt(far)}</li></ul>"
             return ECB_FIXTURE
+
         return fetch
 
     def test_fetch_filtre_et_cache(self):
@@ -88,8 +96,7 @@ class TestFetchCbEvents(unittest.TestCase):
         ev = fetch_central_bank_events(store=self.store, cfg=self.cfg, fetcher=self._fetcher(compteur))
         self.assertTrue(all(e["date"] >= dt.date.today() - dt.timedelta(days=1) for e in ev))
         # jour 2 de la réunion « dans 10 j » retenu (décision), la réunion à 200 j filtrée
-        self.assertTrue(any(e["bank"] == "FOMC" and 8 <= (e["date"] - dt.date.today()).days <= 12
-                            for e in ev))
+        self.assertTrue(any(e["bank"] == "FOMC" and 8 <= (e["date"] - dt.date.today()).days <= 12 for e in ev))
         self.assertFalse(any((e["date"] - dt.date.today()).days > 90 for e in ev))  # horizon 90 j
         # BCE : fixture avec dates fixes (peut être dans le passé -> filtrées ou lointaines)
         urls = {FED_CAL_URL, ECB_CAL_URL}
@@ -102,6 +109,7 @@ class TestFetchCbEvents(unittest.TestCase):
     def test_fetch_resilient_si_panne(self):
         def boom(url):
             raise RuntimeError("offline")
+
         ev = fetch_central_bank_events(store=self.store, cfg=self.cfg, fetcher=boom)
         self.assertEqual(ev, [])  # pas d'exception, liste vide
 

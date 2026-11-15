@@ -9,8 +9,7 @@ import unittest
 import matplotlib
 from matplotlib.figure import Figure
 
-from tradehelper.gui.theme import (FONT_SCALE_MAX, FONT_SCALE_MIN, PALETTES, THEMES,
-                                   apply_mpl_theme, font_size, mpl_rc)
+from tradehelper.gui.theme import FONT_SCALE_MAX, FONT_SCALE_MIN, PALETTES, THEMES, apply_mpl_theme, font_size, mpl_rc
 
 
 class TestPalettes(unittest.TestCase):
@@ -19,8 +18,7 @@ class TestPalettes(unittest.TestCase):
         self.assertEqual(set(PALETTES), set(THEMES))
 
     def test_palette_complet(self):
-        keys = {"bg", "fg", "field", "accent", "accent_fg", "select_bg", "heading",
-                "disabled", "border"}
+        keys = {"bg", "fg", "field", "accent", "accent_fg", "select_bg", "heading", "disabled", "border"}
         for name, p in PALETTES.items():
             self.assertTrue(keys <= set(p), f"clés manquantes dans {name}: {keys - set(p)}")
             for k, v in p.items():
@@ -28,8 +26,9 @@ class TestPalettes(unittest.TestCase):
 
     def test_sombre_vraiment_sombre(self):
         def lum(hexcol):
-            r, g, b = (int(hexcol[i:i + 2], 16) for i in (1, 3, 5))
+            r, g, b = (int(hexcol[i : i + 2], 16) for i in (1, 3, 5))
             return 0.299 * r + 0.587 * g + 0.114 * b
+
         self.assertLess(lum(PALETTES["sombre"]["bg"]), 80)
         self.assertGreater(lum(PALETTES["clair"]["bg"]), 200)
 

@@ -18,8 +18,14 @@ class AdaptiveRegime(Strategy):
     name = "adaptive_regime"
     label = "Régime adaptatif (ADX : tendance=MA cross, range=RSI)"
     description = "ADX > seuil -> suivi de tendance (EMA) ; sinon mean-reversion RSI. Stop ATR."
-    default_params = {"adx_threshold": 25.0, "fast": 12, "slow": 26,
-                      "rsi_oversold": 30.0, "rsi_exit": 50.0, "atr_stop": 2.5}
+    default_params = {
+        "adx_threshold": 25.0,
+        "fast": 12,
+        "slow": 26,
+        "rsi_oversold": 30.0,
+        "rsi_exit": 50.0,
+        "atr_stop": 2.5,
+    }
 
     def generate(self, df: pd.DataFrame) -> pd.DataFrame:
         p = self.params
@@ -49,7 +55,9 @@ class AdaptiveRegime(Strategy):
                 # régime range : mean-reversion RSI
                 if in_pos == 0 and pd.notna(r.iloc[i]) and r.iloc[i] < float(p["rsi_oversold"]):
                     in_pos = 1
-                    reason.iloc[i] = f"Régime range (ADX {a.iloc[i] if pd.notna(a.iloc[i]) else 0:.0f}) : RSI {r.iloc[i]:.0f} survente"
+                    reason.iloc[i] = (
+                        f"Régime range (ADX {a.iloc[i] if pd.notna(a.iloc[i]) else 0:.0f}) : RSI {r.iloc[i]:.0f} survente"
+                    )
                 elif in_pos == 1 and pd.notna(r.iloc[i]) and r.iloc[i] > float(p["rsi_exit"]):
                     in_pos = 0
                     reason.iloc[i] = f"Régime range : RSI {r.iloc[i]:.0f} > sortie"

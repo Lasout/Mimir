@@ -19,7 +19,7 @@ class TestFeeModel(unittest.TestCase):
 
     def test_min_max(self):
         f = FeeModel("TR crypto", pct=0.01, min_fee=1.0, max_fee=50.0)
-        self.assertEqual(f.cost(10), 1.0)          # min
+        self.assertEqual(f.cost(10), 1.0)  # min
         self.assertEqual(f.cost(1_000_000), 50.0)  # max
         self.assertAlmostEqual(f.cost(10_000), 100.0 - 50.0 + 50.0 if False else min(100.0, 50.0))
 
@@ -33,8 +33,8 @@ class TestPresets(unittest.TestCase):
         stock = get_fee_model("trade_republic_fr_auto", "stock")
         crypto = get_fee_model("trade_republic_fr_auto", "crypto")
         forex = get_fee_model("trade_republic_fr_auto", "forex")
-        self.assertEqual(stock.flat, 1.0)          # 1 €/ordre actions
-        self.assertEqual(crypto.pct, 0.01)          # 1 % crypto
+        self.assertEqual(stock.flat, 1.0)  # 1 €/ordre actions
+        self.assertEqual(crypto.pct, 0.01)  # 1 % crypto
         self.assertEqual(crypto.min_fee, 1.0)
         self.assertIsNotNone(forex)
 

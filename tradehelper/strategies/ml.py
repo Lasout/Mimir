@@ -26,17 +26,19 @@ def _features(df: pd.DataFrame) -> pd.DataFrame:
     vol = df["Volume"].fillna(0.0)
     m = macd(close)
     bb = bollinger_bands(close)
-    feats = pd.DataFrame({
-        "ret_1": close.pct_change(1),
-        "ret_5": close.pct_change(5),
-        "rsi": rsi(close, 14) / 100.0,
-        "macd_rel": m["hist"] / close,
-        "pct_b": bb["pct_b"],
-        "atr_pct": atr(df, 14) / close,
-        "vol_ratio": vol / sma(vol, 20).replace(0, np.nan),
-        "adx": adx(df, 14) / 100.0,
-        "dist_ema50": close / ema(close, 50) - 1.0,
-    })
+    feats = pd.DataFrame(
+        {
+            "ret_1": close.pct_change(1),
+            "ret_5": close.pct_change(5),
+            "rsi": rsi(close, 14) / 100.0,
+            "macd_rel": m["hist"] / close,
+            "pct_b": bb["pct_b"],
+            "atr_pct": atr(df, 14) / close,
+            "vol_ratio": vol / sma(vol, 20).replace(0, np.nan),
+            "adx": adx(df, 14) / 100.0,
+            "dist_ema50": close / ema(close, 50) - 1.0,
+        }
+    )
     return feats.fillna(0.0)
 
 
@@ -49,9 +51,16 @@ class MLSignal(Strategy):
     name = "ml_signal"
     label = "Signal ML (HistGB, fenêtre glissante, CV temporelle)"
     description = "Classifieur sklearn sur features techniques causales ; réentraîné périodiquement."
-    default_params = {"retrain_every": 20, "train_window": 500, "min_train": 60,
-                      "threshold": 0.0, "margin": 0.02, "n_splits": 3, "atr_stop": 2.5,
-                      "device": "auto"}  # auto | cpu | cuda (cuda -> XGBoost device="cuda")
+    default_params = {
+        "retrain_every": 20,
+        "train_window": 500,
+        "min_train": 60,
+        "threshold": 0.0,
+        "margin": 0.02,
+        "n_splits": 3,
+        "atr_stop": 2.5,
+        "device": "auto",
+    }  # auto | cpu | cuda (cuda -> XGBoost device="cuda")
 
     def __init__(self, **params: Any) -> None:
         super().__init__(**params)
@@ -61,11 +70,20 @@ class MLSignal(Strategy):
         if device == "cuda":
             try:
                 from xgboost import XGBClassifier
-                return XGBClassifier(tree_method="hist", device="cuda", n_estimators=200,
-                                     max_depth=6, learning_rate=0.1, random_state=0, n_jobs=-1)
+
+                return XGBClassifier(
+                    tree_method="hist",
+                    device="cuda",
+                    n_estimators=200,
+                    max_depth=6,
+                    learning_rate=0.1,
+                    random_state=0,
+                    n_jobs=-1,
+                )
             except ImportError:
                 pass  # pas de xgboost -> repli sklearn CPU
         from sklearn.ensemble import HistGradientBoostingClassifier
+
         return HistGradientBoostingClassifier(max_iter=100, learning_rate=0.1, random_state=0)
 
     def generate(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -78,6 +96,7 @@ class MLSignal(Strategy):
         device = p.get("device", "auto")
         if device == "auto":
             from ..compute import detect_backend
+
             device = detect_backend()
         sig = self._empty_signals(df)
         feats = _features(df)
@@ -114,7 +133,7 @@ class MLSignal(Strategy):
                     model = self._make_model(device)
                     model.fit(X[lo:i][mask], y[lo:i][mask])
             if model is not None:
-                prob = model.predict_proba(X[i:i + 1])[0, 1]
+                prob = model.predict_proba(X[i : i + 1])[0, 1]
                 pos[i] = 1.0 if prob > 0.5 + margin else 0.0
             else:
                 pos[i] = pos[i - 1] if i > 0 else 0.0

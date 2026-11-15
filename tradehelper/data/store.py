@@ -96,6 +96,7 @@ class Store:
         if self._pq is None:
             try:
                 import pyarrow  # noqa: F401
+
                 self._pq = True
             except Exception:
                 self._pq = False
@@ -155,22 +156,38 @@ class Store:
         if df.index.tz is not None:
             df.index = df.index.tz_convert("UTC").tz_localize(None)
         rows = [
-            (source, symbol.upper(), interval, ts.strftime("%Y-%m-%d %H:%M:%S"),
-             float(r["Open"]), float(r["High"]), float(r["Low"]), float(r["Close"]),
-             None if pd.isna(r["Volume"]) else float(r["Volume"]))
+            (
+                source,
+                symbol.upper(),
+                interval,
+                ts.strftime("%Y-%m-%d %H:%M:%S"),
+                float(r["Open"]),
+                float(r["High"]),
+                float(r["Low"]),
+                float(r["Close"]),
+                None if pd.isna(r["Volume"]) else float(r["Volume"]),
+            )
             for ts, r in df.iterrows()
         ]
         with self._lock:
             self._conn.executemany(
                 "INSERT OR REPLACE INTO bars (source, symbol, interval, ts, open, high, low, close, volume)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                rows,
+            )
             self._conn.commit()
         self._write_parquet_full(source, symbol, interval)
         return len(rows)
 
     # ------------------------------------------------------------- lecture
-    def _read_sql(self, source: str, symbol: str, interval: str,
-                  start: pd.Timestamp | None = None, end: pd.Timestamp | None = None) -> pd.DataFrame:
+    def _read_sql(
+        self,
+        source: str,
+        symbol: str,
+        interval: str,
+        start: pd.Timestamp | None = None,
+        end: pd.Timestamp | None = None,
+    ) -> pd.DataFrame:
         """Lecture SQLite directe (source de vérité), avec colonne 'ts'."""
         q = "SELECT ts, open, high, low, close, volume FROM bars WHERE source=? AND symbol=? AND interval=?"
         args: list = [source, symbol.upper(), interval]
@@ -184,8 +201,14 @@ class Store:
         with self._lock:
             return pd.read_sql_query(q, self._conn, params=args, parse_dates=["ts"])
 
-    def read(self, source: str, symbol: str, interval: str,
-             start: pd.Timestamp | None = None, end: pd.Timestamp | None = None) -> pd.DataFrame:
+    def read(
+        self,
+        source: str,
+        symbol: str,
+        interval: str,
+        start: pd.Timestamp | None = None,
+        end: pd.Timestamp | None = None,
+    ) -> pd.DataFrame:
         # cache Parquet d'abord (lecture columnar), avec garde-fou : le snapshot doit
         # couvrir au moins toutes les lignes SQLite, sinon on retombe sur SQLite
         df = self._read_parquet(source, symbol, interval)
@@ -216,28 +239,30 @@ class Store:
         with self._lock:
             row = self._conn.execute(
                 "SELECT MAX(ts) FROM bars WHERE source=? AND symbol=? AND interval=?",
-                (source, symbol.upper(), interval)).fetchone()
+                (source, symbol.upper(), interval),
+            ).fetchone()
         return pd.Timestamp(row[0]) if row and row[0] else None
 
     def first_ts(self, source: str, symbol: str, interval: str) -> pd.Timestamp | None:
         with self._lock:
             row = self._conn.execute(
                 "SELECT MIN(ts) FROM bars WHERE source=? AND symbol=? AND interval=?",
-                (source, symbol.upper(), interval)).fetchone()
+                (source, symbol.upper(), interval),
+            ).fetchone()
         return pd.Timestamp(row[0]) if row and row[0] else None
 
     def count(self, source: str, symbol: str, interval: str) -> int:
         with self._lock:
             row = self._conn.execute(
                 "SELECT COUNT(*) FROM bars WHERE source=? AND symbol=? AND interval=?",
-                (source, symbol.upper(), interval)).fetchone()
+                (source, symbol.upper(), interval),
+            ).fetchone()
         return int(row[0])
 
     def count_source(self, source: str) -> int:
         """Nombre total de barres stockées pour une source (0 si aucune)."""
         with self._lock:
-            row = self._conn.execute(
-                "SELECT COUNT(*) FROM bars WHERE source=?", (source,)).fetchone()
+            row = self._conn.execute("SELECT COUNT(*) FROM bars WHERE source=?", (source,)).fetchone()
         return int(row[0])
 
     def clear_bars(self) -> int:
@@ -266,40 +291,48 @@ class Store:
 
     def meta_set(self, key: str, value) -> None:
         with self._lock:
-            self._conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
-                               (key, json.dumps(value)))
+            self._conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, json.dumps(value)))
             self._conn.commit()
 
     # ------------------------------------------------------------- watchlist
     def watch_add(self, source: str, symbol: str) -> None:
         from ..timeutil import utcnow_naive
+
         with self._lock:
             self._conn.execute(
                 "INSERT OR REPLACE INTO watchlist (source, symbol, added_at) VALUES (?, ?, ?)",
-                (source, symbol.upper(), utcnow_naive().strftime("%Y-%m-%d %H:%M:%S")))
+                (source, symbol.upper(), utcnow_naive().strftime("%Y-%m-%d %H:%M:%S")),
+            )
             self._conn.commit()
 
     def watch_remove(self, source: str, symbol: str) -> None:
         with self._lock:
-            self._conn.execute("DELETE FROM watchlist WHERE source=? AND symbol=?",
-                               (source, symbol.upper()))
+            self._conn.execute("DELETE FROM watchlist WHERE source=? AND symbol=?", (source, symbol.upper()))
             self._conn.commit()
 
     def watch_list(self) -> list[tuple[str, str, str]]:
         """Retourne [(source, symbol, added_at)] triés par source puis symbole."""
         with self._lock:
             rows = self._conn.execute(
-                "SELECT source, symbol, added_at FROM watchlist ORDER BY source, symbol").fetchall()
+                "SELECT source, symbol, added_at FROM watchlist ORDER BY source, symbol"
+            ).fetchall()
         return [(r[0], r[1], r[2]) for r in rows]
 
     # ------------------------------------------------------------- runs (historique)
     def log_run(self, kind: str, symbol: str, summary: str, payload: dict) -> int:
         from ..timeutil import utcnow_naive
+
         with self._lock:
             cur = self._conn.execute(
                 "INSERT INTO runs (kind, symbol, summary, payload, created_at) VALUES (?, ?, ?, ?, ?)",
-                (kind, symbol.upper(), summary, json.dumps(payload, ensure_ascii=False, default=str),
-                 utcnow_naive().strftime("%Y-%m-%d %H:%M:%S")))
+                (
+                    kind,
+                    symbol.upper(),
+                    summary,
+                    json.dumps(payload, ensure_ascii=False, default=str),
+                    utcnow_naive().strftime("%Y-%m-%d %H:%M:%S"),
+                ),
+            )
             self._conn.commit()
         return int(cur.lastrowid)
 
@@ -307,9 +340,13 @@ class Store:
         with self._lock:
             rows = self._conn.execute(
                 "SELECT id, kind, symbol, summary, payload, created_at FROM runs"
-                " ORDER BY created_at DESC, id DESC LIMIT ?", (int(limit),)).fetchall()
-        return [{"id": r[0], "kind": r[1], "symbol": r[2], "summary": r[3],
-                 "payload": json.loads(r[4]), "created_at": r[5]} for r in rows]
+                " ORDER BY created_at DESC, id DESC LIMIT ?",
+                (int(limit),),
+            ).fetchall()
+        return [
+            {"id": r[0], "kind": r[1], "symbol": r[2], "summary": r[3], "payload": json.loads(r[4]), "created_at": r[5]}
+            for r in rows
+        ]
 
     def clear_runs(self) -> int:
         with self._lock:
@@ -321,16 +358,32 @@ class Store:
     # ------------------------------------------------------------- paper trading
     def paper_add(self, pos: dict) -> int:
         from ..timeutil import utcnow_naive
+
         pos = dict(pos)
         pos.setdefault("entry_time", utcnow_naive().strftime("%Y-%m-%d %H:%M:%S"))
         pos.setdefault("status", "open")
-        cols = ("symbol", "source", "side", "qty", "entry_price", "entry_time", "stop",
-                "target", "strategy", "reason", "status", "exit_price", "exit_time",
-                "pnl", "exit_reason")
+        cols = (
+            "symbol",
+            "source",
+            "side",
+            "qty",
+            "entry_price",
+            "entry_time",
+            "stop",
+            "target",
+            "strategy",
+            "reason",
+            "status",
+            "exit_price",
+            "exit_time",
+            "pnl",
+            "exit_reason",
+        )
         with self._lock:
             cur = self._conn.execute(
                 f"INSERT INTO paper_positions ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
-                tuple(pos.get(c) for c in cols))
+                tuple(pos.get(c) for c in cols),
+            )
             self._conn.commit()
         return int(cur.lastrowid)
 
@@ -339,14 +392,15 @@ class Store:
             return
         sets = ", ".join(f"{k}=?" for k in fields)
         with self._lock:
-            self._conn.execute(f"UPDATE paper_positions SET {sets} WHERE id=?",
-                               (*fields.values(), pid))
+            self._conn.execute(f"UPDATE paper_positions SET {sets} WHERE id=?", (*fields.values(), pid))
             self._conn.commit()
 
     def paper_list(self, status: str | None = None) -> list[dict]:
-        q = ("SELECT id, symbol, source, side, qty, entry_price, entry_time, stop, target, "
-             "strategy, reason, status, exit_price, exit_time, pnl, exit_reason "
-             "FROM paper_positions")
+        q = (
+            "SELECT id, symbol, source, side, qty, entry_price, entry_time, stop, target, "
+            "strategy, reason, status, exit_price, exit_time, pnl, exit_reason "
+            "FROM paper_positions"
+        )
         args: tuple = ()
         if status:
             q += " WHERE status=?"
@@ -354,10 +408,25 @@ class Store:
         q += " ORDER BY id"
         with self._lock:
             rows = self._conn.execute(q, args).fetchall()
-        keys = ("id", "symbol", "source", "side", "qty", "entry_price", "entry_time", "stop",
-                "target", "strategy", "reason", "status", "exit_price", "exit_time", "pnl",
-                "exit_reason")
-        return [dict(zip(keys, r)) for r in rows]
+        keys = (
+            "id",
+            "symbol",
+            "source",
+            "side",
+            "qty",
+            "entry_price",
+            "entry_time",
+            "stop",
+            "target",
+            "strategy",
+            "reason",
+            "status",
+            "exit_price",
+            "exit_time",
+            "pnl",
+            "exit_reason",
+        )
+        return [dict(zip(keys, r, strict=True)) for r in rows]
 
     def paper_clear(self) -> int:
         with self._lock:
@@ -369,10 +438,12 @@ class Store:
     # ------------------------------------------------------------- journal
     def journal_add(self, symbol: str | None, kind: str, text: str, image_path: str | None = None) -> int:
         from ..timeutil import utcnow_naive
+
         with self._lock:
             cur = self._conn.execute(
                 "INSERT INTO journal (created_at, symbol, kind, text, image_path) VALUES (?, ?, ?, ?, ?)",
-                (utcnow_naive().strftime("%Y-%m-%d %H:%M:%S"), symbol, kind, text, image_path))
+                (utcnow_naive().strftime("%Y-%m-%d %H:%M:%S"), symbol, kind, text, image_path),
+            )
             self._conn.commit()
         return int(cur.lastrowid)
 
@@ -380,9 +451,13 @@ class Store:
         with self._lock:
             rows = self._conn.execute(
                 "SELECT id, created_at, symbol, kind, text, image_path FROM journal"
-                " ORDER BY created_at DESC, id DESC LIMIT ?", (int(limit),)).fetchall()
-        return [{"id": r[0], "created_at": r[1], "symbol": r[2], "kind": r[3],
-                 "text": r[4], "image_path": r[5]} for r in rows]
+                " ORDER BY created_at DESC, id DESC LIMIT ?",
+                (int(limit),),
+            ).fetchall()
+        return [
+            {"id": r[0], "created_at": r[1], "symbol": r[2], "kind": r[3], "text": r[4], "image_path": r[5]}
+            for r in rows
+        ]
 
     def journal_delete(self, jid: int) -> None:
         with self._lock:
@@ -404,5 +479,6 @@ def default_store() -> Store:
     with _default_lock:
         if _default_store is None:
             from ..config import load_config
+
             _default_store = Store(load_config()["db_path"])
         return _default_store

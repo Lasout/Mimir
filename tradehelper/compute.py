@@ -25,6 +25,7 @@ def gpu_info() -> dict | None:
     """Infos GPU si une carte CUDA est utilisable, sinon None."""
     try:
         import cupy as cp
+
         n = cp.cuda.runtime.getDeviceCount()
         if n <= 0:
             return None
@@ -32,8 +33,12 @@ def gpu_info() -> dict | None:
         name = props.get("name", b"?")
         if isinstance(name, bytes):
             name = name.decode(errors="replace")
-        return {"backend": "cuda", "device": str(name), "devices": int(n),
-                "vram_gb": round(props.get("totalGlobalMem", 0) / 1e9, 1)}
+        return {
+            "backend": "cuda",
+            "device": str(name),
+            "devices": int(n),
+            "vram_gb": round(props.get("totalGlobalMem", 0) / 1e9, 1),
+        }
     except Exception:
         return None
 
@@ -44,8 +49,10 @@ def detect_backend(cfg: dict | None = None) -> str:
     want = (os.environ.get("TRADEHELPER_BACKEND") or cfg.get("compute_backend", "auto")).lower()
     if want in ("cuda", "gpu"):
         if gpu_info() is None:
-            raise RuntimeError("Backend 'cuda' demandé mais aucune carte CUDA détectée. "
-                               "Installer cupy (requirements-gpu.txt) ou passer en cpu.")
+            raise RuntimeError(
+                "Backend 'cuda' demandé mais aucune carte CUDA détectée. "
+                "Installer cupy (requirements-gpu.txt) ou passer en cpu."
+            )
         return "cuda"
     if want == "cpu":
         return "cpu"
@@ -63,8 +70,10 @@ def backend_label(backend: str) -> str:
 # Indicateurs sur GPU (cupy). Mêmes définitions que indicators.py (pandas).
 # ---------------------------------------------------------------------------
 
+
 def _sma_gpu(x, w: int):
     import cupy as cp
+
     cs = cp.concatenate([[0.0], cp.cumsum(x)])
     out = (cs[w:] - cs[:-w]) / w
     return cp.concatenate([cp.full(w - 1, cp.nan), out])
@@ -72,8 +81,8 @@ def _sma_gpu(x, w: int):
 
 def _ema_gpu(x, span: int):
     """EMA adjust=False, identique à pandas ewm(span, adjust=False)."""
-    import cupy as cp
     from cupyx.scipy.signal import lfilter
+
     alpha = 2.0 / (span + 1.0)
     zi = (1.0 - alpha) * x[0]
     y, _ = lfilter([alpha], [1.0, -(1.0 - alpha)], x, zi=[zi])
@@ -82,8 +91,8 @@ def _ema_gpu(x, span: int):
 
 def _wilder_gpu(x, period: int):
     """Lissage de Wilder (alpha = 1/period), identique à ewm(alpha=1/period, adjust=False)."""
-    import cupy as cp
     from cupyx.scipy.signal import lfilter
+
     alpha = 1.0 / period
     zi = (1.0 - alpha) * x[0]
     y, _ = lfilter([alpha], [1.0, -(1.0 - alpha)], x, zi=[zi])
@@ -93,6 +102,7 @@ def _wilder_gpu(x, period: int):
 def _rolling_std_gpu(x, w: int):
     import cupy as cp
     from cupy.lib.stride_tricks import sliding_window_view
+
     win = sliding_window_view(x, w)
     out = win.std(axis=1, ddof=0)
     return cp.concatenate([cp.full(w - 1, cp.nan), out])
@@ -101,6 +111,7 @@ def _rolling_std_gpu(x, w: int):
 def _rolling_max_gpu(x, w: int):
     import cupy as cp
     from cupy.lib.stride_tricks import sliding_window_view
+
     out = sliding_window_view(x, w).max(axis=1)
     return cp.concatenate([cp.full(w - 1, cp.nan), out])
 
@@ -108,12 +119,14 @@ def _rolling_max_gpu(x, w: int):
 def _rolling_min_gpu(x, w: int):
     import cupy as cp
     from cupy.lib.stride_tricks import sliding_window_view
+
     out = sliding_window_view(x, w).min(axis=1)
     return cp.concatenate([cp.full(w - 1, cp.nan), out])
 
 
 def _rsi_gpu(close, period: int = 14):
     import cupy as cp
+
     delta = cp.diff(close, prepend=close[0])
     gain = cp.clip(delta, 0.0, None)
     loss = cp.clip(-delta, 0.0, None)
@@ -127,10 +140,11 @@ def _rsi_gpu(close, period: int = 14):
 def add_all_gpu(df: pd.DataFrame, periods_per_year: float = 252) -> pd.DataFrame:
     """Equivalent GPU (cupy) de indicators.add_all. Retourne un DataFrame pandas."""
     import cupy as cp
+
     out = df.copy()
-    o = cp.asarray(df["Open"].to_numpy(), dtype=cp.float64)
+    # Open non utilisé par les indicateurs ci-dessous
     h = cp.asarray(df["High"].to_numpy(), dtype=cp.float64)
-    l = cp.asarray(df["Low"].to_numpy(), dtype=cp.float64)
+    lo = cp.asarray(df["Low"].to_numpy(), dtype=cp.float64)
     c = cp.asarray(df["Close"].to_numpy(), dtype=cp.float64)
     v = cp.asarray(df["Volume"].fillna(0.0).to_numpy(), dtype=cp.float64)
 
@@ -155,13 +169,13 @@ def add_all_gpu(df: pd.DataFrame, periods_per_year: float = 252) -> pd.DataFrame
     put("BB_lower", mid - 2 * std)
     put("BB_pctb", (c - (mid - 2 * std)) / ((mid + 2 * std) - (mid - 2 * std)))
     prev_c = cp.concatenate([[c[0]], c[:-1]])
-    tr = cp.maximum(cp.maximum(h - l, cp.abs(h - prev_c)), cp.abs(l - prev_c))
+    tr = cp.maximum(cp.maximum(h - lo, cp.abs(h - prev_c)), cp.abs(lo - prev_c))
     atr14 = _wilder_gpu(tr, 14)
     put("ATR14", atr14)
     put("ATR_pct", atr14 / c)
     # ADX
     up = cp.diff(h, prepend=h[0])
-    down = -cp.diff(l, prepend=l[0])
+    down = -cp.diff(lo, prepend=lo[0])
     plus_dm = cp.where((up > down) & (up > 0), up, 0.0)
     minus_dm = cp.where((down > up) & (down > 0), down, 0.0)
     plus_di = 100.0 * _wilder_gpu(plus_dm, 14) / atr14
@@ -170,10 +184,10 @@ def add_all_gpu(df: pd.DataFrame, periods_per_year: float = 252) -> pd.DataFrame
     dx = 100.0 * cp.abs(plus_di - minus_di) / cp.where(denom == 0, cp.nan, denom)
     put("ADX14", _wilder_gpu(dx, 14))
     put("Donchian_upper", _rolling_max_gpu(h, 20))
-    put("Donchian_lower", _rolling_min_gpu(l, 20))
+    put("Donchian_lower", _rolling_min_gpu(lo, 20))
     direction = cp.sign(cp.diff(c, prepend=c[0]))
     put("OBV", cp.cumsum(v * direction))
-    typical = (h + l + c) / 3.0
+    typical = (h + lo + c) / 3.0
     cum_v = cp.cumsum(v)
     put("VWAP", cp.cumsum(typical * v) / cp.where(cum_v == 0, cp.nan, cum_v))
     log_ret = cp.log(c / cp.concatenate([[c[0]], c[:-1]]))
@@ -181,10 +195,10 @@ def add_all_gpu(df: pd.DataFrame, periods_per_year: float = 252) -> pd.DataFrame
     return out
 
 
-def add_all_dispatch(df: pd.DataFrame, backend: str = "auto",
-                     periods_per_year: float = 252) -> pd.DataFrame:
+def add_all_dispatch(df: pd.DataFrame, backend: str = "auto", periods_per_year: float = 252) -> pd.DataFrame:
     """add_all avec dispatch CPU/GPU. Toute erreur GPU retombe en CPU."""
     from .indicators import add_all as add_all_cpu
+
     if backend == "auto":
         backend = detect_backend()
     if backend == "cuda":

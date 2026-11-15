@@ -20,9 +20,29 @@ def export_figure_png(fig, path: str | Path) -> Path:
 
 
 # colonnes conservées dans l'ordre d'affichage du screener
-SCREENER_COLS = ["symbol", "type", "last_close", "label", "score", "strategy_label", "sharpe",
-                 "total_return", "n_trades", "win_rate", "position", "horizon", "entry", "stop",
-                 "target", "rsi", "adx", "atr_pct", "risk", "best_strategy", "error"]
+SCREENER_COLS = [
+    "symbol",
+    "type",
+    "last_close",
+    "label",
+    "score",
+    "strategy_label",
+    "sharpe",
+    "total_return",
+    "n_trades",
+    "win_rate",
+    "position",
+    "horizon",
+    "entry",
+    "stop",
+    "target",
+    "rsi",
+    "adx",
+    "atr_pct",
+    "risk",
+    "best_strategy",
+    "error",
+]
 
 
 def export_screener_csv(rows: list[dict], path: str | Path) -> Path:

@@ -6,8 +6,9 @@ import numpy as np
 import pandas as pd
 
 
-def monte_carlo_trades(trades: pd.DataFrame, initial_capital: float = 10_000.0,
-                       n_sims: int = 1000, seed: int = 42) -> dict:
+def monte_carlo_trades(
+    trades: pd.DataFrame, initial_capital: float = 10_000.0, n_sims: int = 1000, seed: int = 42
+) -> dict:
     """Rééchantillonne les rendements des trades (avec remplacement) et rejicule
     la trajectoire d'equity. Retourne les percentiles de valeur finale et de DD."""
     if trades is None or len(trades) == 0:

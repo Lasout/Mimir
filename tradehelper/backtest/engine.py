@@ -35,16 +35,16 @@ def run_backtest(
     df: pd.DataFrame,
     signals: pd.DataFrame,
     initial_capital: float = 10_000.0,
-    commission: float = 0.001,          # legacy : % du notionnel si `fee` est None
-    fee: FeeModel | None = None,        # modèle de frais par exécution (ex. Trade Republic FR)
+    commission: float = 0.001,  # legacy : % du notionnel si `fee` est None
+    fee: FeeModel | None = None,  # modèle de frais par exécution (ex. Trade Republic FR)
     slippage: float = 0.0005,
     allow_short: bool = False,
-    sizing: str = "all_in",             # "all_in" | "risk" | "kelly"
+    sizing: str = "all_in",  # "all_in" | "risk" | "kelly"
     risk_per_trade: float = 0.01,
-    kelly_fraction: float = 0.5,        # fraction de Kelly appliquée (ex. 0.5 = half-Kelly)
+    kelly_fraction: float = 0.5,  # fraction de Kelly appliquée (ex. 0.5 = half-Kelly)
     periods_per_year: float = 252,
-    funding_per_bar: float = 0.0,       # ex. 0.0001 = 1 pb/bar sur le notionnel (perps crypto)
-    vol_target: float | None = None,    # vol annualisée cible (réduit la taille au-delà)
+    funding_per_bar: float = 0.0,  # ex. 0.0001 = 1 pb/bar sur le notionnel (perps crypto)
+    vol_target: float | None = None,  # vol annualisée cible (réduit la taille au-delà)
     max_drawdown_stop: float | None = None,  # ex. 0.20 -> aplatit si DD <= -20 %
 ) -> BacktestResult:
     df = df.dropna(subset=["Open", "High", "Low", "Close"]).copy()
@@ -101,14 +101,19 @@ def run_backtest(
         pnl_gross = (px - entry_price) * qty * (1 if shares > 0 else -1)
         cash += qty * px * (1 if shares > 0 else -1) - exit_fee
         total_fees += exit_fee
-        trades.append({
-            "entry_time": entry_time, "entry_price": entry_price,
-            "exit_time": df.index[i], "exit_price": px,
-            "side": "long" if shares > 0 else "short",
-            "pnl": pnl_gross - exit_fee - entry_fee,
-            "ret": (px / entry_price - 1.0) * (1 if shares > 0 else -1),
-            "bars": i - entry_bar, "reason": reason,
-        })
+        trades.append(
+            {
+                "entry_time": entry_time,
+                "entry_price": entry_price,
+                "exit_time": df.index[i],
+                "exit_price": px,
+                "side": "long" if shares > 0 else "short",
+                "pnl": pnl_gross - exit_fee - entry_fee,
+                "ret": (px / entry_price - 1.0) * (1 if shares > 0 else -1),
+                "bars": i - entry_bar,
+                "reason": reason,
+            }
+        )
         shares = 0.0
         entry_price = np.nan
         entry_fee = 0.0
@@ -189,7 +194,9 @@ def run_backtest(
             cash -= f
             total_fees += f
         # nouvelle cible (exécutée à l'open de i+1) — ignorée si stop de drawdown actif
-        pending_target = 0.0 if halted else (float(np.clip(target_pos[i], -1, 1)) if allow_short else max(0.0, float(target_pos[i])))
+        pending_target = (
+            0.0 if halted else (float(np.clip(target_pos[i], -1, 1)) if allow_short else max(0.0, float(target_pos[i])))
+        )
         pos_curve[i] = shares
         equity_curve[i] = cash + shares * close[i]
         # stop de drawdown avec hystérésis
@@ -211,17 +218,27 @@ def run_backtest(
 
     equity = pd.Series(equity_curve, index=df.index, name="equity")
     positions = pd.Series(pos_curve, index=df.index, name="position")
-    trades_df = pd.DataFrame(trades, columns=[
-        "entry_time", "entry_price", "exit_time", "exit_price", "side",
-        "pnl", "ret", "bars", "reason"])
+    trades_df = pd.DataFrame(
+        trades, columns=["entry_time", "entry_price", "exit_time", "exit_price", "side", "pnl", "ret", "bars", "reason"]
+    )
     metrics = compute_metrics(equity, trades_df, positions, periods_per_year=periods_per_year)
     metrics["total_fees"] = total_fees
     return BacktestResult(
-        equity=equity, trades=trades_df, positions=positions, signals=sig,
+        equity=equity,
+        trades=trades_df,
+        positions=positions,
+        signals=sig,
         metrics=metrics,
-        params={"initial_capital": initial_capital, "fee": fee.describe(), "slippage": slippage,
-                "allow_short": allow_short, "sizing": sizing, "risk_per_trade": risk_per_trade,
-                "kelly_fraction": kelly_fraction,
-                "funding_per_bar": funding_per_bar, "vol_target": vol_target,
-                "max_drawdown_stop": max_drawdown_stop},
+        params={
+            "initial_capital": initial_capital,
+            "fee": fee.describe(),
+            "slippage": slippage,
+            "allow_short": allow_short,
+            "sizing": sizing,
+            "risk_per_trade": risk_per_trade,
+            "kelly_fraction": kelly_fraction,
+            "funding_per_bar": funding_per_bar,
+            "vol_target": vol_target,
+            "max_drawdown_stop": max_drawdown_stop,
+        },
     )

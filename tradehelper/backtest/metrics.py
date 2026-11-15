@@ -12,12 +12,12 @@ def max_drawdown(equity: pd.Series) -> float:
     return float(dd.min())
 
 
-def compute_metrics(equity: pd.Series, trades: pd.DataFrame, positions: pd.Series,
-                    periods_per_year: float = 252, rf: float = 0.0) -> dict:
+def compute_metrics(
+    equity: pd.Series, trades: pd.DataFrame, positions: pd.Series, periods_per_year: float = 252, rf: float = 0.0
+) -> dict:
     equity = equity.dropna()
     if len(equity) < 2:
-        return {"total_return": 0.0, "cagr": 0.0, "sharpe": 0.0, "max_drawdown": 0.0,
-                "n_trades": 0, "win_rate": 0.0}
+        return {"total_return": 0.0, "cagr": 0.0, "sharpe": 0.0, "max_drawdown": 0.0, "n_trades": 0, "win_rate": 0.0}
     rets = equity.pct_change().dropna()
     days = (equity.index[-1] - equity.index[0]).total_seconds() / 86400.0
     years = max(days / 365.0, 1e-9)
@@ -74,9 +74,26 @@ def compute_metrics(equity: pd.Series, trades: pd.DataFrame, positions: pd.Serie
 def periods_per_year(interval: str, source: str = "stock") -> float:
     """Nombre de barres par an selon l'intervalle (approx.)."""
     if source == "crypto":
-        return {"1d": 365, "12h": 730, "8h": 1095, "4h": 2190, "2h": 4380,
-                "1h": 8760, "30m": 17520, "15m": 35040, "5m": 105120}.get(interval, 365)
+        return {
+            "1d": 365,
+            "12h": 730,
+            "8h": 1095,
+            "4h": 2190,
+            "2h": 4380,
+            "1h": 8760,
+            "30m": 17520,
+            "15m": 35040,
+            "5m": 105120,
+        }.get(interval, 365)
     if source == "forex":
         return 252
-    return {"1d": 252, "1wk": 52, "1mo": 12, "1h": 252 * 6.5, "4h": 252 * 6.5 / 4,
-            "30m": 252 * 6.5 * 2, "15m": 252 * 6.5 * 4, "5m": 252 * 6.5 * 12}.get(interval, 252)
+    return {
+        "1d": 252,
+        "1wk": 52,
+        "1mo": 12,
+        "1h": 252 * 6.5,
+        "4h": 252 * 6.5 / 4,
+        "30m": 252 * 6.5 * 2,
+        "15m": 252 * 6.5 * 4,
+        "5m": 252 * 6.5 * 12,
+    }.get(interval, 252)

@@ -3,12 +3,12 @@ import unittest
 import numpy as np
 import pandas as pd
 
+from tests.helpers import make_ohlcv, make_trend_reversal
 from tradehelper.backtest import run_backtest, run_portfolio
 from tradehelper.data.universe import universe_for
 from tradehelper.fees import FeeModel
 from tradehelper.screener import top_pick
 from tradehelper.strategies import get_strategy
-from tests.helpers import make_ohlcv, make_trend_reversal
 
 
 class TestETFsInUniverse(unittest.TestCase):
@@ -45,13 +45,13 @@ class TestMLSignal(unittest.TestCase):
 class TestKellySizing(unittest.TestCase):
     def test_kelly_runs(self):
         df = make_ohlcv(n=150, drift=0.004, vol=0.01, seed=4)
-        sig = pd.DataFrame({"position": 0, "stop": np.nan, "target": np.nan, "reason": ""},
-                           index=df.index)
+        sig = pd.DataFrame({"position": 0, "stop": np.nan, "target": np.nan, "reason": ""}, index=df.index)
         # signaux oscillants pour générer plusieurs trades
         sig.loc[sig.index[10::15], "position"] = [1, 0] * 5
-        sig["position"] = sig["position"].cummax().clip(0, 1).where(sig["position"].diff().fillna(0) != 0, sig["position"])
-        res = run_backtest(df, sig, fee=FeeModel("zero"), slippage=0.0, sizing="kelly",
-                           kelly_fraction=0.5)
+        sig["position"] = (
+            sig["position"].cummax().clip(0, 1).where(sig["position"].diff().fillna(0) != 0, sig["position"])
+        )
+        res = run_backtest(df, sig, fee=FeeModel("zero"), slippage=0.0, sizing="kelly", kelly_fraction=0.5)
         self.assertIn("total_return", res.metrics)
         self.assertEqual(res.params["sizing"], "kelly")
 
@@ -60,8 +60,14 @@ class TestPortfolioMaxCorr(unittest.TestCase):
     def test_correlated_assets_not_both_held(self):
         base = make_ohlcv(n=150, drift=0.002, vol=0.01, seed=11)
         dfs = {"AAA": base.copy(), "BBB": base.copy(), "CCC": make_ohlcv(n=150, drift=-0.001, vol=0.012, seed=99)}
-        res = run_portfolio(dfs, "ma_cross", params={"fast": 5, "slow": 20, "trend_filter": False},
-                            fee=FeeModel("zero"), slippage=0.0, max_corr=0.9)
+        res = run_portfolio(
+            dfs,
+            "ma_cross",
+            params={"fast": 5, "slow": 20, "trend_filter": False},
+            fee=FeeModel("zero"),
+            slippage=0.0,
+            max_corr=0.9,
+        )
         # AAA et BBB sont identiques (corr = 1) : jamais détenus ensemble
         both = ((res.positions["AAA"] > 0.4) & (res.positions["BBB"] > 0.4)).sum()
         self.assertEqual(both, 0)
@@ -69,21 +75,38 @@ class TestPortfolioMaxCorr(unittest.TestCase):
     def test_without_max_corr_both_can_be_held(self):
         base = make_ohlcv(n=150, drift=0.002, vol=0.01, seed=11)
         dfs = {"AAA": base.copy(), "BBB": base.copy()}
-        res = run_portfolio(dfs, "ma_cross", params={"fast": 5, "slow": 20, "trend_filter": False},
-                            fee=FeeModel("zero"), slippage=0.0)
+        res = run_portfolio(
+            dfs, "ma_cross", params={"fast": 5, "slow": 20, "trend_filter": False}, fee=FeeModel("zero"), slippage=0.0
+        )
         both = ((res.positions["AAA"] > 0.4) & (res.positions["BBB"] > 0.4)).sum()
         self.assertGreater(both, 0)
 
 
 class TestTopPick(unittest.TestCase):
     def _row(self, sym, position, score, sharpe, error=None):
-        return {"symbol": sym, "position": position, "score": score, "sharpe": sharpe,
-                "label": "ACHAT", "strategy_label": "X", "n_trades": 5, "win_rate": 0.6,
-                "entry": 100, "stop": 95, "target": 110, "horizon": "≈ 10 j", "error": error}
+        return {
+            "symbol": sym,
+            "position": position,
+            "score": score,
+            "sharpe": sharpe,
+            "label": "ACHAT",
+            "strategy_label": "X",
+            "n_trades": 5,
+            "win_rate": 0.6,
+            "entry": 100,
+            "stop": 95,
+            "target": 110,
+            "horizon": "≈ 10 j",
+            "error": error,
+        }
 
     def test_picks_best_achat(self):
-        rows = [self._row("A", "ACHAT", 0.5, 1.0), self._row("B", "ACHAT", 0.8, 0.5),
-                self._row("C", "ATTENTE", 0.9, 2.0), self._row("D", "ACHAT", 0.1, 2.0, error="x")]
+        rows = [
+            self._row("A", "ACHAT", 0.5, 1.0),
+            self._row("B", "ACHAT", 0.8, 0.5),
+            self._row("C", "ATTENTE", 0.9, 2.0),
+            self._row("D", "ACHAT", 0.1, 2.0, error="x"),
+        ]
         pick = top_pick(rows)
         self.assertIsNotNone(pick)
         self.assertIn(pick["symbol"], ("A", "B"))  # D exclu (erreur), C exclu (pas ACHAT)

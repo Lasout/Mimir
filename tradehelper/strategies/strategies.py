@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ..indicators import atr, donchian, ema, macd, rsi, sma
+from ..indicators import donchian, ema, macd, rsi, sma
 from .base import Strategy
 
 
@@ -19,8 +19,7 @@ class MovingAverageCross(Strategy):
     name = "ma_cross"
     label = "Croisement de moyennes mobiles (swing)"
     description = "EMA rapide vs EMA lente, filtre de tendance optionnel, stop ATR."
-    default_params = {"fast": 12, "slow": 26, "trend_filter": True, "trend_ema": 200,
-                      "atr_stop": 3.0}
+    default_params = {"fast": 12, "slow": 26, "trend_filter": True, "trend_ema": 200, "atr_stop": 3.0}
 
     def generate(self, df: pd.DataFrame) -> pd.DataFrame:
         p = self.params

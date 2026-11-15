@@ -23,8 +23,9 @@ def _label(score: float) -> str:
     return LABELS[-1][1]
 
 
-def advise(df: pd.DataFrame, symbol: str, source: str = "stock", interval: str = "1d",
-           tech_weight: float = 0.65) -> dict:
+def advise(
+    df: pd.DataFrame, symbol: str, source: str = "stock", interval: str = "1d", tech_weight: float = 0.65
+) -> dict:
     """Retourne un avis structuré : score, label, raisons, niveaux de risque.
 
     Horizon suggéré : day trading si intervalle intraday (< 1d), swing sinon.
@@ -32,10 +33,7 @@ def advise(df: pd.DataFrame, symbol: str, source: str = "stock", interval: str =
     tech = technical_analysis(df)
     fund = fundamental_analysis(symbol, source=source)
 
-    if fund["available"]:
-        score = tech_weight * tech["score"] + (1 - tech_weight) * fund["score"]
-    else:
-        score = tech["score"]
+    score = tech_weight * tech["score"] + (1 - tech_weight) * fund["score"] if fund["available"] else tech["score"]
 
     reasons = [f"[Technique] {r}" for r in tech["reasons"]]
     if fund["available"]:
@@ -44,16 +42,21 @@ def advise(df: pd.DataFrame, symbol: str, source: str = "stock", interval: str =
     # calendrier des annonces (actions uniquement, pas les ETF, mis en cache 24 h)
     earnings_date = None
     from .data.universe import ETF_LIST
+
     if source == "stock" and symbol.upper() not in ETF_LIST:
         try:
             from .data.events import fetch_earnings_date
+
             earnings_date = fetch_earnings_date(symbol)
             if earnings_date is not None:
                 import datetime as dt
+
                 days = (earnings_date - dt.date.today()).days
                 if 0 <= days <= 14:
-                    reasons.append(f"[Calendrier] Publication des résultats le {earnings_date:%d/%m/%Y} "
-                                   f"(dans {days} j) : volatilité attendue, prudence sur la taille de position.")
+                    reasons.append(
+                        f"[Calendrier] Publication des résultats le {earnings_date:%d/%m/%Y} "
+                        f"(dans {days} j) : volatilité attendue, prudence sur la taille de position."
+                    )
                 else:
                     reasons.append(f"[Calendrier] Prochaine publication des résultats le {earnings_date:%d/%m/%Y}.")
         except Exception:
@@ -63,13 +66,17 @@ def advise(df: pd.DataFrame, symbol: str, source: str = "stock", interval: str =
     cb_events: list[dict] = []
     try:
         import datetime as dt
+
         from .data.events import fetch_central_bank_events
+
         cb_events = fetch_central_bank_events()
         for e in cb_events:
             days = (e["date"] - dt.date.today()).days
             if 0 <= days <= 14:
-                reasons.append(f"[Banques centrales] Réunion {e['bank']} le {e['date']:%d/%m/%Y} "
-                               f"(dans {days} j) : volatilité attendue, prudence sur la taille de position.")
+                reasons.append(
+                    f"[Banques centrales] Réunion {e['bank']} le {e['date']:%d/%m/%Y} "
+                    f"(dans {days} j) : volatilité attendue, prudence sur la taille de position."
+                )
     except Exception:
         cb_events = []
 

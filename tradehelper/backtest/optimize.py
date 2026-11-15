@@ -11,9 +11,15 @@ from ..strategies import get_strategy
 from .engine import run_backtest
 
 
-def grid_search(df: pd.DataFrame, strategy_key: str, param_grid: dict[str, list],
-                metric: str = "sharpe", min_trades: int = 3, top: int | None = None,
-                **bt_kwargs: Any) -> pd.DataFrame:
+def grid_search(
+    df: pd.DataFrame,
+    strategy_key: str,
+    param_grid: dict[str, list],
+    metric: str = "sharpe",
+    min_trades: int = 3,
+    top: int | None = None,
+    **bt_kwargs: Any,
+) -> pd.DataFrame:
     """Teste toutes les combinaisons de `param_grid` et retourne un DataFrame trié.
 
     Colonnes : les paramètres + métriques (sharpe, total_return, max_drawdown,
@@ -25,17 +31,25 @@ def grid_search(df: pd.DataFrame, strategy_key: str, param_grid: dict[str, list]
     combos = list(itertools.product(*[param_grid[k] for k in keys]))
     rows = []
     for combo in combos:
-        params = dict(zip(keys, combo))
+        params = dict(zip(keys, combo, strict=True))
         try:
             sig = get_strategy(strategy_key, **params).generate(df)
             res = run_backtest(df, sig, **bt_kwargs)
             m = res.metrics
             row = dict(params)
-            row.update({"sharpe": m["sharpe"], "sortino": m["sortino"],
-                        "total_return": m["total_return"], "cagr": m["cagr"],
-                        "max_drawdown": m["max_drawdown"], "n_trades": m["n_trades"],
-                        "win_rate": m["win_rate"], "profit_factor": m["profit_factor"],
-                        "total_fees": m.get("total_fees", 0.0)})
+            row.update(
+                {
+                    "sharpe": m["sharpe"],
+                    "sortino": m["sortino"],
+                    "total_return": m["total_return"],
+                    "cagr": m["cagr"],
+                    "max_drawdown": m["max_drawdown"],
+                    "n_trades": m["n_trades"],
+                    "win_rate": m["win_rate"],
+                    "profit_factor": m["profit_factor"],
+                    "total_fees": m.get("total_fees", 0.0),
+                }
+            )
             rows.append(row)
         except Exception:
             continue
@@ -51,7 +65,7 @@ def grid_search(df: pd.DataFrame, strategy_key: str, param_grid: dict[str, list]
         mask = pd.Series(True, index=pool.index)
         for k in keys:
             mask &= pool[k] == r[k]
-        others = pool[(~mask) & (pool[keys].apply(lambda c: (c != r[keys]).sum() == 1, axis=1))]
+        others = pool[(~mask) & (pool[keys].apply(lambda c, r=r: (c != r[keys]).sum() == 1, axis=1))]
         neigh.append(others[metric].mean() if len(others) else r[metric])
     pool = pool.copy()
     pool[neighbor_col] = neigh

@@ -3,9 +3,9 @@ import unittest
 import numpy as np
 
 import tradehelper.data.events as events_mod
+from tests.helpers import make_ohlcv, make_trend_reversal
 from tradehelper.advice import advise
 from tradehelper.strategies import get_strategy, list_strategies
-from tests.helpers import make_ohlcv, make_trend_reversal
 
 
 def _no_network_cb(**kw):
@@ -15,8 +15,10 @@ def _no_network_cb(**kw):
 class TestStrategies(unittest.TestCase):
     def test_registry(self):
         keys = [s["key"] for s in list_strategies()]
-        self.assertEqual(set(keys), {"ma_cross", "rsi_reversion", "donchian_breakout",
-                                     "macd_momentum", "adaptive_regime", "ml_signal"})
+        self.assertEqual(
+            set(keys),
+            {"ma_cross", "rsi_reversion", "donchian_breakout", "macd_momentum", "adaptive_regime", "ml_signal"},
+        )
 
     def test_signals_shape(self):
         df = make_ohlcv(n=200)
@@ -30,17 +32,19 @@ class TestStrategies(unittest.TestCase):
     def test_ma_cross_entries_and_exits_on_reversal(self):
         df = make_trend_reversal(n=300)
         sig = get_strategy("ma_cross", fast=10, slow=30, trend_filter=False).generate(df)
-        self.assertIn(1, sig["position"].values)   # au moins une entrée
+        self.assertIn(1, sig["position"].values)  # au moins une entrée
         self.assertIn(0, sig["position"].iloc[10:].values)  # et une sortie après
 
     def test_rsi_reversion_on_oscillation(self):
         n = 300
         close = 100 + 8 * np.sin(np.linspace(0, 6 * np.pi, n))
         import pandas as pd
+
         idx = pd.bdate_range("2025-01-01", periods=n)
-        df = pd.DataFrame({"Open": close, "High": close * 1.01, "Low": close * 0.99,
-                           "Close": close, "Volume": 1e6}, index=idx)
-        sig = get_strategy("rsi_reversion", oversold=35, exit_level= 60).generate(df)
+        df = pd.DataFrame(
+            {"Open": close, "High": close * 1.01, "Low": close * 0.99, "Close": close, "Volume": 1e6}, index=idx
+        )
+        sig = get_strategy("rsi_reversion", oversold=35, exit_level=60).generate(df)
         self.assertGreater((sig["position"] == 1).sum(), 0)
 
     def test_custom_params(self):
@@ -69,6 +73,7 @@ class TestAdvice(unittest.TestCase):
 
     def test_advise_avec_banques_centrales(self):
         import datetime as dt
+
         events_mod.fetch_central_bank_events = lambda **kw: [
             {"date": dt.date.today() + dt.timedelta(days=5), "bank": "FOMC"},
             {"date": dt.date.today() + dt.timedelta(days=40), "bank": "BCE"},
@@ -102,6 +107,7 @@ class TestETFSansReseau(unittest.TestCase):
     def test_fundamental_etf_ne_touche_pas_yfinance(self):
         import sys
         import types
+
         old_yf = sys.modules.get("yfinance")
 
         def boom(*a, **k):
@@ -112,6 +118,7 @@ class TestETFSansReseau(unittest.TestCase):
         sys.modules["yfinance"] = fake_yf
         try:
             from tradehelper.analysis.fundamental import fundamental_analysis
+
             out = fundamental_analysis("SPY", source="stock")
         finally:
             if old_yf is not None:
@@ -127,9 +134,9 @@ class TestETFSansReseau(unittest.TestCase):
         def boom(*a, **k):
             raise AssertionError("fetcher appelé pour un ETF")
 
-        out = advanced_fundamental("SPY", source="stock",
-                                   fetchers={"news": boom, "eps": boom, "info": boom,
-                                             "peers_info": boom, "peers": []})
+        out = advanced_fundamental(
+            "SPY", source="stock", fetchers={"news": boom, "eps": boom, "info": boom, "peers_info": boom, "peers": []}
+        )
         self.assertFalse(out["available"])
 
     def test_advise_etf_sans_earnings(self):
@@ -142,8 +149,8 @@ class TestETFSansReseau(unittest.TestCase):
             adv = advise(df, "SPY", source="stock", interval="1d")
         finally:
             events_mod.fetch_earnings_date = orig_earn
-        self.assertEqual(called, [])                      # pas de calendrier earnings pour un ETF
-        self.assertFalse(adv["fundamental_available"])   # pas de fondamental
+        self.assertEqual(called, [])  # pas de calendrier earnings pour un ETF
+        self.assertFalse(adv["fundamental_available"])  # pas de fondamental
         self.assertIsNone(adv["earnings_date"])
         self.assertIn(adv["label"], {"ACHAT FORT", "ACHAT", "NEUTRE", "PRUDENCE (réduire)", "VENTE / ÉVITER"})
 

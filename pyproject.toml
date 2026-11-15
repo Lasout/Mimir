@@ -50,3 +50,26 @@ module = ["tradehelper.data.*", "tradehelper.analysis.*", "tradehelper.compute",
           "tradehelper.indicators", "tradehelper.timeutil", "tradehelper.paper",
           "tradehelper.broker", "tradehelper.gui.*"]
 ignore_errors = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]  # ligne longue gérée par le formateur/120 ; E501 bruyant sur les docstrings
+
+[tool.ruff.lint.isort]
+known-first-party = ["tradehelper", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# les tests réseau sont skippés sans le flag (voir tests/test_integration_network.py)
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["tradehelper.indicators", "tradehelper.backtest", "tradehelper.strategies", "tradehelper.screener"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true

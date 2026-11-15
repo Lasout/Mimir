@@ -3,9 +3,8 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from tradehelper.indicators import (adx, atr, bollinger_bands, ema, macd, obv,
-                                    rsi, rolling_volatility, sma)
 from tests.helpers import make_ohlcv
+from tradehelper.indicators import adx, atr, bollinger_bands, ema, macd, obv, rolling_volatility, rsi, sma
 
 
 class TestIndicators(unittest.TestCase):

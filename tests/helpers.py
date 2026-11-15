@@ -4,8 +4,9 @@ import numpy as np
 import pandas as pd
 
 
-def make_ohlcv(n: int = 250, start: float = 100.0, drift: float = 0.0008, vol: float = 0.015,
-               seed: int = 42) -> pd.DataFrame:
+def make_ohlcv(
+    n: int = 250, start: float = 100.0, drift: float = 0.0008, vol: float = 0.015, seed: int = 42
+) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
     rets = rng.normal(drift, vol, n)
     close = start * np.exp(np.cumsum(rets))
@@ -14,8 +15,7 @@ def make_ohlcv(n: int = 250, start: float = 100.0, drift: float = 0.0008, vol: f
     low = np.minimum(open_, close) * (1 - np.abs(rng.normal(0, vol / 3, n)))
     volume = rng.integers(1_000_000, 5_000_000, n).astype(float)
     idx = pd.bdate_range("2025-01-01", periods=n)
-    return pd.DataFrame({"Open": open_, "High": high, "Low": low, "Close": close,
-                         "Volume": volume}, index=idx)
+    return pd.DataFrame({"Open": open_, "High": high, "Low": low, "Close": close, "Volume": volume}, index=idx)
 
 
 def make_trend_reversal(n: int = 300, seed: int = 7) -> pd.DataFrame:
@@ -30,5 +30,4 @@ def make_trend_reversal(n: int = 300, seed: int = 7) -> pd.DataFrame:
     high = np.maximum(open_, close) * 1.005
     low = np.minimum(open_, close) * 0.995
     volume = np.full(n, 2_000_000.0)
-    return pd.DataFrame({"Open": open_, "High": high, "Low": low, "Close": close,
-                         "Volume": volume}, index=idx)
+    return pd.DataFrame({"Open": open_, "High": high, "Low": low, "Close": close, "Volume": volume}, index=idx)

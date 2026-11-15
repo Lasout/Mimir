@@ -13,7 +13,7 @@ class TestParseDotenv(unittest.TestCase):
             "# commentaire\n"
             "ALPHAVANTAGE_API_KEY=abc123\n"
             "\n"
-            "TRADEHELPER_LANG = \"en\"\n"
+            'TRADEHELPER_LANG = "en"\n'
             "TRADEHELPER_ADJUST_PRICES='0'\n"
             "ligne_sans_egal\n"
         )
@@ -30,25 +30,31 @@ class TestParseDotenv(unittest.TestCase):
 
 class TestLoadConfig(unittest.TestCase):
     def test_env_gagne_sur_dotenv(self):
-        with mock.patch.dict(os.environ, {"ALPHAVANTAGE_API_KEY": "ENVKEY"}, clear=False):
-            with mock.patch("tradehelper.config._load_dotenv",
-                            return_value={"ALPHAVANTAGE_API_KEY": "DOTENVKEY"}):
-                cfg = load_config()
+        with (
+            mock.patch.dict(os.environ, {"ALPHAVANTAGE_API_KEY": "ENVKEY"}, clear=False),
+            mock.patch("tradehelper.config._load_dotenv", return_value={"ALPHAVANTAGE_API_KEY": "DOTENVKEY"}),
+        ):
+            cfg = load_config()
         self.assertEqual(cfg["alphavantage_api_key"], "ENVKEY")
 
     def test_dotenv_alimente_la_config(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
-            with mock.patch("tradehelper.config._load_dotenv",
-                            return_value={"ALPHAVANTAGE_API_KEY": "DOTENVKEY",
-                                          "TRADEHELPER_LANG": "en"}):
-                cfg = load_config()
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch(
+                "tradehelper.config._load_dotenv",
+                return_value={"ALPHAVANTAGE_API_KEY": "DOTENVKEY", "TRADEHELPER_LANG": "en"},
+            ),
+        ):
+            cfg = load_config()
         self.assertEqual(cfg["alphavantage_api_key"], "DOTENVKEY")
         self.assertEqual(cfg["lang"], "en")
 
     def test_defauts_sans_env(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
-            with mock.patch("tradehelper.config._load_dotenv", return_value={}):
-                cfg = load_config()
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch("tradehelper.config._load_dotenv", return_value={}),
+        ):
+            cfg = load_config()
         self.assertIsNone(cfg["alphavantage_api_key"])
         self.assertEqual(cfg["lang"], "fr")
         self.assertTrue(cfg["adjust_prices"])

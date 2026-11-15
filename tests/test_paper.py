@@ -11,11 +11,30 @@ from tradehelper.data.store import Store
 from tradehelper.paper import PaperError, PaperPortfolio
 
 
-def screener_row(symbol, position="ACHAT", entry=100.0, last_close=100.0, stop=95.0,
-                  target=110.0, label="ACHAT", best="ma_cross", error=None):
-    return {"symbol": symbol, "type": "Action", "position": position, "entry": entry,
-            "stop": stop, "target": target, "last_close": last_close, "label": label,
-            "best_strategy": best, "error": error, "score": 0.5}
+def screener_row(
+    symbol,
+    position="ACHAT",
+    entry=100.0,
+    last_close=100.0,
+    stop=95.0,
+    target=110.0,
+    label="ACHAT",
+    best="ma_cross",
+    error=None,
+):
+    return {
+        "symbol": symbol,
+        "type": "Action",
+        "position": position,
+        "entry": entry,
+        "stop": stop,
+        "target": target,
+        "last_close": last_close,
+        "label": label,
+        "best_strategy": best,
+        "error": error,
+        "score": 0.5,
+    }
 
 
 class TestPaperPortfolio(unittest.TestCase):
@@ -96,8 +115,13 @@ class TestPaperPortfolio(unittest.TestCase):
         self.assertEqual(out["closed"][0]["exit_reason"], "objectif atteint")
 
     def test_apply_screener_max_positions_et_erreurs(self):
-        rows = [screener_row("A"), screener_row("B"), screener_row("C"), screener_row("D"),
-                screener_row("ERR", error="pas de données")]
+        rows = [
+            screener_row("A"),
+            screener_row("B"),
+            screener_row("C"),
+            screener_row("D"),
+            screener_row("ERR", error="pas de données"),
+        ]
         out = self.pf.apply_screener(rows, source="stock")
         self.assertEqual(len(out["opened"]), 3)  # max 3
         self.assertTrue(any("D" in s for s in out["skipped"]))
@@ -140,10 +164,9 @@ class TestBrokers(unittest.TestCase):
     def test_ibkr_garde_fous(self):
         env = {"TRADEHELPER_ALLOW_LIVE_TRADING": "1"}
         cfg = {"ibkr": {"host": "127.0.0.1", "port": 7497, "client_id": 1}, "max_order_notional": 500.0}
-        with mock.patch.dict(os.environ, env, clear=True):
-            # ib_insync non installé dans l'environnement de test -> refus propre
-            with self.assertRaises(BrokerError):
-                IBKRBroker(cfg=cfg)
+        # ib_insync non installé dans l'environnement de test -> refus propre
+        with mock.patch.dict(os.environ, env, clear=True), self.assertRaises(BrokerError):
+            IBKRBroker(cfg=cfg)
 
     def test_broker_inconnu(self):
         with self.assertRaises(BrokerError):

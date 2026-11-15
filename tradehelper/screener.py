@@ -12,8 +12,9 @@ import multiprocessing as mp
 import os
 import queue
 import threading
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import Any, Callable
+from typing import Any
 
 import pandas as pd
 
@@ -25,8 +26,19 @@ from .data.universe import asset_type
 from .fees import FeeModel, get_fee_model
 from .strategies import get_strategy, list_strategies
 
-BAR_HOURS = {"1d": 24.0, "1wk": 168.0, "1mo": 720.0, "12h": 12.0, "8h": 8.0,
-             "4h": 4.0, "2h": 2.0, "1h": 1.0, "30m": 0.5, "15m": 0.25, "5m": 5.0 / 60.0}
+BAR_HOURS = {
+    "1d": 24.0,
+    "1wk": 168.0,
+    "1mo": 720.0,
+    "12h": 12.0,
+    "8h": 8.0,
+    "4h": 4.0,
+    "2h": 2.0,
+    "1h": 1.0,
+    "30m": 0.5,
+    "15m": 0.25,
+    "5m": 5.0 / 60.0,
+}
 
 
 def bar_hours(interval: str) -> float:
@@ -44,8 +56,14 @@ def format_horizon(avg_bars: float, interval: str) -> str:
     return f"≈ {max(1, round(days / 30.0))} mois"
 
 
-def recommend(df: pd.DataFrame, signals: pd.DataFrame, metrics: dict,
-              interval: str, stop_mult: float = 2.0, reward_risk: float = 2.5) -> dict:
+def recommend(
+    df: pd.DataFrame,
+    signals: pd.DataFrame,
+    metrics: dict,
+    interval: str,
+    stop_mult: float = 2.0,
+    reward_risk: float = 2.5,
+) -> dict:
     """Recommandation à partir du dernier signal de la stratégie choisie.
 
     - position : ACHAT si la stratégie est en position longue à la dernière barre
@@ -68,8 +86,7 @@ def recommend(df: pd.DataFrame, signals: pd.DataFrame, metrics: dict,
         position = "SHORT"
     else:
         position = "ATTENTE"
-    return {"position": position, "entry": entry, "stop": stop, "target": target,
-            "horizon": horizon, "atr": atr}
+    return {"position": position, "entry": entry, "stop": stop, "target": target, "horizon": horizon, "atr": atr}
 
 
 def _pick_best(results: list[tuple]) -> tuple:
@@ -86,9 +103,11 @@ def top_pick(rows: list[dict]) -> dict | None:
     0,6 x score d'avis + 0,4 x Sharpe normalisé de la meilleure stratégie.
     Retourne la ligne choisie (avec une clé "why" explicative), ou None.
     """
-    cands = [r for r in rows
-             if not r.get("error") and r.get("position") == "ACHAT"
-             and isinstance(r.get("score"), (int, float))]
+    cands = [
+        r
+        for r in rows
+        if not r.get("error") and r.get("position") == "ACHAT" and isinstance(r.get("score"), (int, float))
+    ]
     if not cands:
         return None
 
@@ -99,9 +118,11 @@ def top_pick(rows: list[dict]) -> dict | None:
 
     best = max(cands, key=rank)
     best = dict(best)
-    best["why"] = (f"Avis {best['label']} (score {best['score']:+.2f}), meilleure stratégie "
-                   f"{best['strategy_label']} (Sharpe {best['sharpe']}, {best['n_trades']} trades, "
-                   f"win rate {best['win_rate'] * 100:.0f} %)")
+    best["why"] = (
+        f"Avis {best['label']} (score {best['score']:+.2f}), meilleure stratégie "
+        f"{best['strategy_label']} (Sharpe {best['sharpe']}, {best['n_trades']} trades, "
+        f"win rate {best['win_rate'] * 100:.0f} %)"
+    )
     return best
 
 
@@ -117,8 +138,9 @@ def _screen_one(args: tuple) -> dict:
     try:
         if prog is not None:
             prog.put(("phase", sym, "chargement des données"))
-        df = add_all_dispatch(load_data(source, sym, period=period, interval=interval),
-                              backend=backend, periods_per_year=ppy)
+        df = add_all_dispatch(
+            load_data(source, sym, period=period, interval=interval), backend=backend, periods_per_year=ppy
+        )
         if prog is not None:
             prog.put(("phase", sym, "indicateurs + avis"))
         adv = advise(df, sym, source=source, interval=interval)
@@ -127,8 +149,7 @@ def _screen_one(args: tuple) -> dict:
             params = {"device": backend} if key == "ml_signal" else {}
             strat = get_strategy(key, **params)
             sig = strat.generate(df)
-            res = run_backtest(df, sig, initial_capital=capital, fee=fee,
-                               slippage=slippage, periods_per_year=ppy)
+            res = run_backtest(df, sig, initial_capital=capital, fee=fee, slippage=slippage, periods_per_year=ppy)
             results.append((key, strat.label, res, sig))
             if prog is not None:
                 prog.put(("step", sym, i + 1, len(keys), key))
@@ -159,16 +180,38 @@ def _screen_one(args: tuple) -> dict:
             "error": None,
         }
     except Exception as exc:
-        return {"symbol": sym, "type": asset_type(source, sym), "error": str(exc),
-                "score": "", "label": f"Erreur: {exc}"[:40],
-                "position": "", "entry": "", "stop": "", "target": "", "horizon": "",
-                "best_strategy": "", "sharpe": "", "total_return": "", "n_trades": "",
-                "win_rate": "", "last_close": "", "rsi": "", "adx": "", "atr_pct": "",
-                "risk": "", "strategy_label": ""}
+        return {
+            "symbol": sym,
+            "type": asset_type(source, sym),
+            "error": str(exc),
+            "score": "",
+            "label": f"Erreur: {exc}"[:40],
+            "position": "",
+            "entry": "",
+            "stop": "",
+            "target": "",
+            "horizon": "",
+            "best_strategy": "",
+            "sharpe": "",
+            "total_return": "",
+            "n_trades": "",
+            "win_rate": "",
+            "last_close": "",
+            "rsi": "",
+            "adx": "",
+            "atr_pct": "",
+            "risk": "",
+            "strategy_label": "",
+        }
 
 
-def _progress_reader(prog_q: Any, on_progress: Callable[[int, int, str, str], None],
-                     total_units: int, state: dict[str, Any], stop: dict[str, bool]) -> None:
+def _progress_reader(
+    prog_q: Any,
+    on_progress: Callable[[int, int, str, str], None],
+    total_units: int,
+    state: dict[str, Any],
+    stop: dict[str, bool],
+) -> None:
     """Lit la file de progression et appelle on_progress(n, total, sym, phase).
 
     Deux types de messages : ("step", sym, faits, total, stratégie) — compté dans la
@@ -193,11 +236,19 @@ def _progress_reader(prog_q: Any, on_progress: Callable[[int, int, str, str], No
             on_progress(state["n"], total_units, sym, text)
 
 
-def screen_assets(source: str, symbols: list[str], period: str = "1y", interval: str = "1d",
-                  capital: float = 10_000.0, fee: FeeModel | None = None, slippage: float = 0.0005,
-                  strategies: list[str] | None = None,
-                  on_progress: Callable[[int, int, str, str], None] | None = None,
-                  backend: str = "auto", workers: int = 0) -> list[dict]:
+def screen_assets(
+    source: str,
+    symbols: list[str],
+    period: str = "1y",
+    interval: str = "1d",
+    capital: float = 10_000.0,
+    fee: FeeModel | None = None,
+    slippage: float = 0.0005,
+    strategies: list[str] | None = None,
+    on_progress: Callable[[int, int, str, str], None] | None = None,
+    backend: str = "auto",
+    workers: int = 0,
+) -> list[dict]:
     """Analyse chaque symbole avec toutes les stratégies. Retourne une liste de dicts.
 
     `fee` : modèle de frais (défaut : Trade Republic FR auto selon la source).
@@ -228,16 +279,15 @@ def screen_assets(source: str, symbols: list[str], period: str = "1y", interval:
             prog_q = queue.Queue()
     else:
         prog_q = None
-    args = [(source, s, period, interval, capital, fee, slippage, keys, backend, prog_q)
-            for s in symbols]
+    args = [(source, s, period, interval, capital, fee, slippage, keys, backend, prog_q) for s in symbols]
 
     state: dict[str, Any] = {"n": 0, "sym": {}}
     stop = {"flag": False}
     reader = None
     if on_progress is not None:
-        reader = threading.Thread(target=_progress_reader,
-                                  args=(prog_q, on_progress, total_units, state, stop),
-                                  daemon=True)
+        reader = threading.Thread(
+            target=_progress_reader, args=(prog_q, on_progress, total_units, state, stop), daemon=True
+        )
         reader.start()
 
     rows: list[dict] = []

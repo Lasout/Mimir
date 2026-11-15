@@ -21,8 +21,7 @@ STRATEGIES: dict[str, type[Strategy]] = {
 
 def list_strategies() -> list[dict]:
     return [
-        {"key": cls.name, "label": cls.label, "description": cls.description,
-         "params": dict(cls.default_params)}
+        {"key": cls.name, "label": cls.label, "description": cls.description, "params": dict(cls.default_params)}
         for cls in STRATEGIES.values()
     ]
 

@@ -1,20 +1,23 @@
 import unittest
 
-import numpy as np
 import pandas as pd
 
-from tradehelper.backtest import (grid_search, monte_carlo_trades, run_portfolio,
-                                 walk_forward)
-from tradehelper.fees import FeeModel
 from tests.helpers import make_ohlcv, make_trend_reversal
+from tradehelper.backtest import grid_search, monte_carlo_trades, run_portfolio, walk_forward
+from tradehelper.fees import FeeModel
 
 
 class TestGridSearch(unittest.TestCase):
     def test_grid_returns_sorted_df(self):
         df = make_trend_reversal(n=300)
-        out = grid_search(df, "ma_cross",
-                          {"fast": [5, 10, 20], "slow": [30, 50], "trend_filter": [False]},
-                          fee=FeeModel("zero"), slippage=0.0, min_trades=1)
+        out = grid_search(
+            df,
+            "ma_cross",
+            {"fast": [5, 10, 20], "slow": [30, 50], "trend_filter": [False]},
+            fee=FeeModel("zero"),
+            slippage=0.0,
+            min_trades=1,
+        )
         self.assertFalse(out.empty)
         self.assertEqual(len(out), 6)
         for col in ("fast", "slow", "sharpe", "total_return", "n_trades", "score", "neighbor_sharpe"):
@@ -30,8 +33,14 @@ class TestGridSearch(unittest.TestCase):
 class TestWalkForward(unittest.TestCase):
     def test_fixed_params(self):
         df = make_trend_reversal(n=400)
-        res = walk_forward(df, "ma_cross", params={"fast": 10, "slow": 30, "trend_filter": False},
-                           n_splits=4, fee=FeeModel("zero"), slippage=0.0)
+        res = walk_forward(
+            df,
+            "ma_cross",
+            params={"fast": 10, "slow": 30, "trend_filter": False},
+            n_splits=4,
+            fee=FeeModel("zero"),
+            slippage=0.0,
+        )
         self.assertGreater(len(res["splits"]), 0)
         self.assertGreater(len(res["oos_equity"]), 0)
         for k in ("total_return", "sharpe", "max_drawdown", "n_trades"):
@@ -43,9 +52,15 @@ class TestWalkForward(unittest.TestCase):
 
     def test_with_param_grid(self):
         df = make_trend_reversal(n=400)
-        res = walk_forward(df, "ma_cross", param_grid={"fast": [5, 10], "slow": [30, 50],
-                                                        "trend_filter": [False]},
-                           n_splits=3, fee=FeeModel("zero"), slippage=0.0, min_trades=1)
+        res = walk_forward(
+            df,
+            "ma_cross",
+            param_grid={"fast": [5, 10], "slow": [30, 50], "trend_filter": [False]},
+            n_splits=3,
+            fee=FeeModel("zero"),
+            slippage=0.0,
+            min_trades=1,
+        )
         self.assertGreater(len(res["splits"]), 0)
         for s in res["splits"]:
             self.assertIn(s["params"]["fast"], (5, 10))
@@ -76,12 +91,13 @@ class TestMonteCarlo(unittest.TestCase):
 
 class TestPortfolio(unittest.TestCase):
     def test_run_portfolio(self):
-        dfs = {s: make_ohlcv(n=200, drift=0.002 if s != "DOWN" else -0.001, vol=0.01,
-                             seed=i)
-               for i, s in enumerate(["AAA", "BBB", "DOWN"])}
-        res = run_portfolio(dfs, "ma_cross",
-                            params={"fast": 10, "slow": 30, "trend_filter": False},
-                            fee=FeeModel("zero"), slippage=0.0)
+        dfs = {
+            s: make_ohlcv(n=200, drift=0.002 if s != "DOWN" else -0.001, vol=0.01, seed=i)
+            for i, s in enumerate(["AAA", "BBB", "DOWN"])
+        }
+        res = run_portfolio(
+            dfs, "ma_cross", params={"fast": 10, "slow": 30, "trend_filter": False}, fee=FeeModel("zero"), slippage=0.0
+        )
         self.assertEqual(len(res.equity), 200)
         self.assertEqual(res.positions.shape, (200, 3))
         self.assertEqual(res.correlation.shape, (3, 3))
