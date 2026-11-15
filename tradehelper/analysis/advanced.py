@@ -190,6 +190,10 @@ def advanced_fundamental(symbol: str, source: str = "stock", store: Store | None
     """
     if source != "stock":
         return {"available": False, "score": 0.0, "reasons": [], "components": [], "data": {}}
+    from ..data.universe import ETF_LIST
+    if symbol.upper() in ETF_LIST:
+        # pas de news/BPA/peers pertinents pour un ETF -> aucun appel réseau
+        return {"available": False, "score": 0.0, "reasons": [], "components": [], "data": {}}
     cfg = cfg or load_config()
     store = store or default_store()
     f = fetchers or {}

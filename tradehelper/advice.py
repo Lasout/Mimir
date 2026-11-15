@@ -41,9 +41,10 @@ def advise(df: pd.DataFrame, symbol: str, source: str = "stock", interval: str =
     if fund["available"]:
         reasons += [f"[Fondamental] {r}" for r in fund["reasons"]]
 
-    # calendrier des annonces (actions uniquement, mis en cache 24 h)
+    # calendrier des annonces (actions uniquement, pas les ETF, mis en cache 24 h)
     earnings_date = None
-    if source == "stock":
+    from .data.universe import ETF_LIST
+    if source == "stock" and symbol.upper() not in ETF_LIST:
         try:
             from .data.events import fetch_earnings_date
             earnings_date = fetch_earnings_date(symbol)

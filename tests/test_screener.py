@@ -101,10 +101,27 @@ class TestScreenAssets(unittest.TestCase):
         calls = []
         screen_assets("crypto", ["UP", "DOWN"], period="1y", interval="1d", workers=1,
                       strategies=["ma_cross", "rsi_reversion"],
-                      on_progress=lambda i, n, s: calls.append((i, n, s)))
-        self.assertEqual(len(calls), 4)          # 2 symboles × 2 stratégies
-        self.assertTrue(all(n == 4 for _, n, _ in calls))
-        self.assertEqual([i for i, _, _ in calls], [1, 2, 3, 4])  # monotone jusqu'au total
+                      on_progress=lambda i, n, s, p="": calls.append((i, n, s, p)))
+        steps = [c for c in calls if c[3].startswith("backtest")]
+        self.assertEqual(len(steps), 4)          # 2 symboles × 2 stratégies
+        self.assertTrue(all(n == 4 for _, n, _, _ in steps))
+        self.assertEqual([i for i, _, _, _ in steps], [1, 2, 3, 4])  # monotone jusqu'au total
+
+    def test_progress_phases_verbose(self):
+        # des messages de phase (sans compter) rendent visible ce qui se passe
+        # entre deux backtests : chargement, indicateurs+avis, backtest k/N
+        calls = []
+        screen_assets("crypto", ["UP"], period="1y", interval="1d", workers=1,
+                      strategies=["ma_cross", "rsi_reversion"],
+                      on_progress=lambda i, n, s, p="": calls.append((i, n, s, p)))
+        phases = [p for _, _, _, p in calls]
+        self.assertIn("chargement des données", phases)
+        self.assertIn("indicateurs + avis", phases)
+        self.assertIn("backtest ma_cross (1/2)", phases)
+        self.assertIn("backtest rsi_reversion (2/2)", phases)
+        # les phases ne font pas avancer le compteur : 2 steps comptés pour 2 stratégies
+        steps = [c for c in calls if c[3].startswith("backtest")]
+        self.assertEqual([i for i, _, _, _ in steps], [1, 2])
 
     def test_progress_padded_sur_erreur(self):
         # un symbole en erreur ne bloque pas la barre : ses étapes sont complétées
@@ -116,7 +133,7 @@ class TestScreenAssets(unittest.TestCase):
         calls = []
         rows = screen_assets("crypto", ["KO", "UP"], period="1y", interval="1d", workers=1,
                              strategies=["ma_cross"],
-                             on_progress=lambda i, n, s: calls.append((i, n, s)))
+                             on_progress=lambda i, n, s, p="": calls.append((i, n, s, p)))
         self.assertEqual([r["symbol"] for r in rows], ["KO", "UP"])
         self.assertIsNotNone(rows[0]["error"])
         self.assertEqual(calls[-1][0], calls[-1][1])  # barre arrivée à 100 % malgré l'erreur

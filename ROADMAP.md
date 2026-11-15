@@ -116,7 +116,12 @@ Contexte projet pour agents : voir [`AGENTS.md`](AGENTS.md).
 - [x] **i18n fr/en** (`gui/i18n.py`, défaut **fr** — règle projet ; `TRADEHELPER_LANG` ou
       menu Affichage, switch à chaud + persisté `ui.lang`)
 - [x] **Barre de progression** pendant tous les calculs (déterminée x/N pour le screener,
-      indéterminée animée sinon)
+      indéterminée animée sinon). Screener **verbeux** : la ligne affiche la phase en cours
+      (« chargement des données », « indicateurs + avis », « backtest <stratégie> (k/N) »)
+      + symbole + écoulé + ETA, même pendant les étapes longues (téléchargement, avis).
+      Les **ETF ne déclenchent plus d'appels réseau fondamentaux/earnings** (plus de
+      bruit « No earnings / 404 / delisted » de yfinance) : fondamental et calendrier
+      des résultats sont réservés aux actions.
 - [x] **Performance** : screener parallélisé (pool de processus, P2), **chargement lazy**
       (mémo LRU des DataFrames indicateurs dans la GUI), **cache Parquet** read-through
       dans le store (`parquet/` à côté du .db, si pyarrow installé, repli SQLite sinon)

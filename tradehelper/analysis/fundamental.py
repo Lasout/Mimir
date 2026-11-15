@@ -24,6 +24,13 @@ def fundamental_analysis(symbol: str, source: str = "stock") -> dict:
     """Retourne score [-1, 1], raisons, et données clés. Sans réseau -> vide."""
     if source != "stock":
         return {"available": False, "score": 0.0, "reasons": ["Analyse fondamentale non disponible pour cette classe d'actifs."], "data": {}}
+    from ..data.universe import ETF_LIST
+    if symbol.upper() in ETF_LIST:
+        # ETF = fonds indiciel : pas de fondamental propre (Yahoo renvoie 404) -> on
+        # saute tout appel réseau pour éviter le bruit "No fundamentals data found"
+        return {"available": False, "score": 0.0,
+                "reasons": ["Analyse fondamentale non disponible pour un ETF (fonds indiciel)."],
+                "data": {}}
 
     import yfinance as yf
 

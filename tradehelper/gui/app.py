@@ -1506,16 +1506,18 @@ class TradeHelperApp:
         def poll_progress():
             try:
                 while True:
-                    item = prog_q.get_nowait()  # ("step", done, total, symbole)
+                    item = prog_q.get_nowait()  # ("step", done, total, symbole, phase)
                     done, total, sym = item[1], item[2], item[3]
+                    phase = item[4] if len(item) > 4 else ""
                     self._progress_set(done, total)
                     el = time.time() - self._scr_t0
                     if done > 0:
                         eta = el * (total - done) / done
                         self.scr_progress.config(
-                            text=f"{done}/{total} — {sym} — écoulé {el:.0f} s — ETA ~{eta:.0f} s")
+                            text=f"{done}/{total} — {sym} — {phase} — écoulé {el:.0f} s — ETA ~{eta:.0f} s")
                     else:
-                        self.scr_progress.config(text=f"0/{total} — démarrage du calcul…")
+                        self.scr_progress.config(
+                            text=f"0/{total} — {sym or 'démarrage'} — {phase or 'démarrage du calcul…'}")
             except queue.Empty:
                 pass
             if not finished["done"]:
@@ -1525,7 +1527,7 @@ class TradeHelperApp:
             return screen_assets(
                 vals["source"], symbols, period=vals["period"], interval=vals["interval"],
                 backend=vals.get("backend", "auto"),
-                on_progress=lambda d, t, s: prog_q.put(("step", d, t, s)),
+                on_progress=lambda d, t, s, p="": prog_q.put(("step", d, t, s, p)),
             )
 
         def done(result, err):

@@ -92,5 +92,61 @@ class TestAdvice(unittest.TestCase):
         self.assertGreater(adv["score"], 0.0)
 
 
+class TestETFSansReseau(unittest.TestCase):
+    """Un ETF ne doit déclencher aucun appel réseau fondamental/earnings.
+
+    Yahoo renvoie 404 ("No fundamentals data found") ou un avertissement
+    ("No earnings dates found, may be delisted") pour les ETF : on saute tout appel.
+    """
+
+    def test_fundamental_etf_ne_touche_pas_yfinance(self):
+        import sys
+        import types
+        old_yf = sys.modules.get("yfinance")
+
+        def boom(*a, **k):
+            raise AssertionError("yfinance ne doit pas être appelé pour un ETF")
+
+        fake_yf = types.ModuleType("yfinance")
+        fake_yf.Ticker = boom
+        sys.modules["yfinance"] = fake_yf
+        try:
+            from tradehelper.analysis.fundamental import fundamental_analysis
+            out = fundamental_analysis("SPY", source="stock")
+        finally:
+            if old_yf is not None:
+                sys.modules["yfinance"] = old_yf
+            else:
+                del sys.modules["yfinance"]
+        self.assertFalse(out["available"])
+        self.assertTrue(any("ETF" in r for r in out["reasons"]))
+
+    def test_advanced_etf_ne_touche_pas_les_fetchers(self):
+        from tradehelper.analysis.advanced import advanced_fundamental
+
+        def boom(*a, **k):
+            raise AssertionError("fetcher appelé pour un ETF")
+
+        out = advanced_fundamental("SPY", source="stock",
+                                   fetchers={"news": boom, "eps": boom, "info": boom,
+                                             "peers_info": boom, "peers": []})
+        self.assertFalse(out["available"])
+
+    def test_advise_etf_sans_earnings(self):
+        called = []
+        orig_earn = events_mod.fetch_earnings_date
+        events_mod.fetch_earnings_date = lambda *a, **k: called.append(a) or None
+        events_mod.fetch_central_bank_events = _no_network_cb
+        try:
+            df = make_ohlcv(n=120, drift=0.003)
+            adv = advise(df, "SPY", source="stock", interval="1d")
+        finally:
+            events_mod.fetch_earnings_date = orig_earn
+        self.assertEqual(called, [])                      # pas de calendrier earnings pour un ETF
+        self.assertFalse(adv["fundamental_available"])   # pas de fondamental
+        self.assertIsNone(adv["earnings_date"])
+        self.assertIn(adv["label"], {"ACHAT FORT", "ACHAT", "NEUTRE", "PRUDENCE (réduire)", "VENTE / ÉVITER"})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -114,8 +114,12 @@ def _screen_one(args: tuple) -> dict:
     source, sym, period, interval, capital, fee, slippage, keys, backend, prog = args
     ppy = periods_per_year(interval, source)
     try:
+        if prog is not None:
+            prog.put(("phase", sym, "chargement des données"))
         df = add_all_dispatch(load_data(source, sym, period=period, interval=interval),
                               backend=backend, periods_per_year=ppy)
+        if prog is not None:
+            prog.put(("phase", sym, "indicateurs + avis"))
         adv = advise(df, sym, source=source, interval=interval)
         results = []
         for i, key in enumerate(keys):
@@ -126,7 +130,7 @@ def _screen_one(args: tuple) -> dict:
                                slippage=slippage, periods_per_year=ppy)
             results.append((key, strat.label, res, sig))
             if prog is not None:
-                prog.put(("step", sym, i + 1, len(keys)))
+                prog.put(("step", sym, i + 1, len(keys), key))
         bkey, blabel, bres, bsig = _pick_best(results)
         rec = recommend(df, bsig, bres.metrics, interval)
         m = bres.metrics
@@ -163,8 +167,11 @@ def _screen_one(args: tuple) -> dict:
 
 
 def _progress_reader(prog_q, on_progress, total_units, state, stop):
-    """Lit la file de progression (steps par stratégie) et appelle on_progress(n, total, sym).
+    """Lit la file de progression et appelle on_progress(n, total, sym, phase).
 
+    Deux types de messages : ("step", sym, faits, total, stratégie) — compté dans la
+    barre ; ("phase", sym, texte) — simple info (ex. "chargement des données") sans
+    faire avancer le compteur, pour rendre visible ce qui se passe entre deux backtests.
     `state` = {"n": compteur global partagé, "sym": {symbole: steps faits}} — le thread
     principal complète (padding) les étapes manquantes d'un symbole en erreur.
     """
@@ -174,10 +181,14 @@ def _progress_reader(prog_q, on_progress, total_units, state, stop):
         except queue.Empty:
             continue
         if msg[0] == "step":
-            _, sym, done_s, _total_s = msg
+            _, sym, done_s, total_s, key = msg
             state["sym"][sym] = done_s
             state["n"] += 1
-            on_progress(state["n"], total_units, sym)
+            on_progress(state["n"], total_units, sym, f"backtest {key} ({done_s}/{total_s})")
+        elif msg[0] == "phase":
+            _, sym, text = msg
+            state["sym"].setdefault(sym, 0)
+            on_progress(state["n"], total_units, sym, text)
 
 
 def screen_assets(source: str, symbols: list[str], period: str = "1y", interval: str = "1d",
@@ -190,8 +201,11 @@ def screen_assets(source: str, symbols: list[str], period: str = "1y", interval:
     `backend` : "auto" | "cpu" | "cuda" — en "cuda", les indicateurs passent sur GPU (cupy)
       et le ML sur XGBoost CUDA. En "cpu", les symboles sont traités en parallèle
       (ProcessPoolExecutor, `workers` processus ; 0 = auto).
-    `on_progress(i, n, symbole)` : progression **par stratégie** — n = len(symboles) ×
-      nb de stratégies (la barre avance continuellement, même en mode pool).
+    `on_progress(i, n, symbole, phase)` : progression **par stratégie** — n = len(symboles) ×
+      nb de stratégies (la barre avance continuellement, même en mode pool). `phase`
+      décrit l'étape en cours : "chargement des données", "indicateurs + avis",
+      "backtest <stratégie> (k/N)", "terminé" — utile pour voir que le scan avance
+      pendant les étapes longues (téléchargement, avis fondamental).
     """
     keys = strategies or [s["key"] for s in list_strategies()]
     if fee is None:
@@ -249,9 +263,9 @@ def screen_assets(source: str, symbols: list[str], period: str = "1y", interval:
                     break
                 if msg[0] == "step" and on_progress is not None:
                     state["n"] += 1
-                    on_progress(state["n"], total_units, msg[1])
+                    on_progress(state["n"], total_units, msg[1], f"backtest {msg[4]} ({msg[2]}/{msg[3]})")
         if on_progress is not None and state["n"] < total_units:
-            on_progress(total_units, total_units, symbols[-1] if symbols else "")
+            on_progress(total_units, total_units, symbols[-1] if symbols else "", "terminé")
         if mgr is not None:
             mgr.shutdown()
     order = {s: i for i, s in enumerate(symbols)}
