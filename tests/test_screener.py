@@ -96,12 +96,30 @@ class TestScreenAssets(unittest.TestCase):
         self.assertEqual(types["SPY"], "ETF")
         self.assertEqual(types["AAPL"], "Action")
 
-    def test_progress_callback(self):
+    def test_progress_callback_par_strategie(self):
+        # la progression est par stratégie : n = nb symboles × nb stratégies, monotone
         calls = []
         screen_assets("crypto", ["UP", "DOWN"], period="1y", interval="1d", workers=1,
+                      strategies=["ma_cross", "rsi_reversion"],
                       on_progress=lambda i, n, s: calls.append((i, n, s)))
-        self.assertEqual(len(calls), 2)
-        self.assertEqual(calls[0][1], 2)
+        self.assertEqual(len(calls), 4)          # 2 symboles × 2 stratégies
+        self.assertTrue(all(n == 4 for _, n, _ in calls))
+        self.assertEqual([i for i, _, _ in calls], [1, 2, 3, 4])  # monotone jusqu'au total
+
+    def test_progress_padded_sur_erreur(self):
+        # un symbole en erreur ne bloque pas la barre : ses étapes sont complétées
+        def boom(source, symbol, period="1y", interval="1d"):
+            if symbol == "KO":
+                raise ValueError("pas de données")
+            return make_ohlcv(n=200, drift=0.004, seed=5)
+        screener_mod.load_data = boom
+        calls = []
+        rows = screen_assets("crypto", ["KO", "UP"], period="1y", interval="1d", workers=1,
+                             strategies=["ma_cross"],
+                             on_progress=lambda i, n, s: calls.append((i, n, s)))
+        self.assertEqual([r["symbol"] for r in rows], ["KO", "UP"])
+        self.assertIsNotNone(rows[0]["error"])
+        self.assertEqual(calls[-1][0], calls[-1][1])  # barre arrivée à 100 % malgré l'erreur
 
 
 if __name__ == "__main__":

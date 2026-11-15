@@ -8,7 +8,10 @@ prix d'entrée, stop-loss et objectif de cours.
 
 from __future__ import annotations
 
+import multiprocessing as mp
 import os
+import queue
+import threading
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import pandas as pd
@@ -102,21 +105,28 @@ def top_pick(rows: list[dict]) -> dict | None:
 
 
 def _screen_one(args: tuple) -> dict:
-    """Analyse un symbole (fonction module-level, picklable pour le pool de processus)."""
-    source, sym, period, interval, capital, fee, slippage, keys, backend = args
+    """Analyse un symbole (fonction module-level, picklable pour le pool de processus).
+
+    Le 10e élément de `args` est une file de progression (queue.Queue en séquentiel,
+    multiprocessing.Queue en pool) ou None : après chaque stratégie, on y dépose
+    ("step", symbole, stratégies faites, nb total de stratégies).
+    """
+    source, sym, period, interval, capital, fee, slippage, keys, backend, prog = args
     ppy = periods_per_year(interval, source)
     try:
         df = add_all_dispatch(load_data(source, sym, period=period, interval=interval),
                               backend=backend, periods_per_year=ppy)
         adv = advise(df, sym, source=source, interval=interval)
         results = []
-        for key in keys:
+        for i, key in enumerate(keys):
             params = {"device": backend} if key == "ml_signal" else {}
             strat = get_strategy(key, **params)
             sig = strat.generate(df)
             res = run_backtest(df, sig, initial_capital=capital, fee=fee,
                                slippage=slippage, periods_per_year=ppy)
             results.append((key, strat.label, res, sig))
+            if prog is not None:
+                prog.put(("step", sym, i + 1, len(keys)))
         bkey, blabel, bres, bsig = _pick_best(results)
         rec = recommend(df, bsig, bres.metrics, interval)
         m = bres.metrics
@@ -152,6 +162,24 @@ def _screen_one(args: tuple) -> dict:
                 "risk": "", "strategy_label": ""}
 
 
+def _progress_reader(prog_q, on_progress, total_units, state, stop):
+    """Lit la file de progression (steps par stratégie) et appelle on_progress(n, total, sym).
+
+    `state` = {"n": compteur global partagé, "sym": {symbole: steps faits}} — le thread
+    principal complète (padding) les étapes manquantes d'un symbole en erreur.
+    """
+    while not stop["flag"]:
+        try:
+            msg = prog_q.get(timeout=0.25)
+        except queue.Empty:
+            continue
+        if msg[0] == "step":
+            _, sym, done_s, _total_s = msg
+            state["sym"][sym] = done_s
+            state["n"] += 1
+            on_progress(state["n"], total_units, sym)
+
+
 def screen_assets(source: str, symbols: list[str], period: str = "1y", interval: str = "1d",
                   capital: float = 10_000.0, fee=None, slippage: float = 0.0005,
                   strategies: list[str] | None = None, on_progress=None,
@@ -162,34 +190,70 @@ def screen_assets(source: str, symbols: list[str], period: str = "1y", interval:
     `backend` : "auto" | "cpu" | "cuda" — en "cuda", les indicateurs passent sur GPU (cupy)
       et le ML sur XGBoost CUDA. En "cpu", les symboles sont traités en parallèle
       (ProcessPoolExecutor, `workers` processus ; 0 = auto).
+    `on_progress(i, n, symbole)` : progression **par stratégie** — n = len(symboles) ×
+      nb de stratégies (la barre avance continuellement, même en mode pool).
     """
     keys = strategies or [s["key"] for s in list_strategies()]
     if fee is None:
         fee = get_fee_model("trade_republic_fr_auto", source)
     if backend == "auto":
         backend = detect_backend()
-    args = [(source, s, period, interval, capital, fee, slippage, keys, backend)
+    total_units = len(symbols) * len(keys)
+    use_pool = backend == "cpu" and len(symbols) > 1 and workers != 1
+    mgr = None
+    if on_progress is not None:
+        if use_pool:
+            # mp.Queue n'est plus picklable via les args d'un executor (Python >= 3.14) :
+            # on passe par un Manager (proxy picklable entre processus)
+            mgr = mp.Manager()
+            prog_q = mgr.Queue()
+        else:
+            prog_q = queue.Queue()
+    else:
+        prog_q = None
+    args = [(source, s, period, interval, capital, fee, slippage, keys, backend, prog_q)
             for s in symbols]
 
-    if backend == "cpu" and len(symbols) > 1 and workers != 1:
-        w = workers or min(8, os.cpu_count() or 1, len(symbols))
-        rows: list[dict] = []
-        done = 0
-        with ProcessPoolExecutor(max_workers=w) as ex:
-            futures = {ex.submit(_screen_one, a): a[1] for a in args}
-            for fut in as_completed(futures):
-                rows.append(fut.result())
-                done += 1
-                if on_progress is not None:
-                    on_progress(done, len(symbols), futures[fut])
-        order = {s: i for i, s in enumerate(symbols)}
-        rows.sort(key=lambda r: order.get(r["symbol"], 0))
-        return rows
+    state = {"n": 0, "sym": {}}
+    stop = {"flag": False}
+    reader = None
+    if on_progress is not None:
+        reader = threading.Thread(target=_progress_reader,
+                                  args=(prog_q, on_progress, total_units, state, stop),
+                                  daemon=True)
+        reader.start()
 
-    # mode séquentiel (cuda : calcul GPU ; ou workers=1)
-    rows = []
-    for i, a in enumerate(args):
-        if on_progress is not None:
-            on_progress(i, len(symbols), a[1])
-        rows.append(_screen_one(a))
+    rows: list[dict] = []
+    try:
+        if use_pool:
+            w = workers or min(8, os.cpu_count() or 1, len(symbols))
+            with ProcessPoolExecutor(max_workers=w) as ex:
+                futures = {ex.submit(_screen_one, a): a[1] for a in args}
+                for fut in as_completed(futures):
+                    rows.append(fut.result())
+        else:
+            # mode séquentiel (cuda : calcul GPU ; ou workers=1)
+            for a in args:
+                rows.append(_screen_one(a))
+    finally:
+        # fin de la progression : on draine les derniers steps puis on force 100 % si
+        # un symbole a levé avant d'avoir tout compté (la barre atteint toujours le total)
+        stop["flag"] = True
+        if reader is not None:
+            reader.join(timeout=2.0)
+        if prog_q is not None:
+            while True:
+                try:
+                    msg = prog_q.get_nowait()
+                except queue.Empty:
+                    break
+                if msg[0] == "step" and on_progress is not None:
+                    state["n"] += 1
+                    on_progress(state["n"], total_units, msg[1])
+        if on_progress is not None and state["n"] < total_units:
+            on_progress(total_units, total_units, symbols[-1] if symbols else "")
+        if mgr is not None:
+            mgr.shutdown()
+    order = {s: i for i, s in enumerate(symbols)}
+    rows.sort(key=lambda r: order.get(r["symbol"], 0))
     return rows

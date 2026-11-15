@@ -91,8 +91,10 @@ Outil d'aide au trading orienté **swing / day trading**, basé sur des **donné
   **menubar** (Fichier / Onglets / Affichage / Aide), **raccourcis clavier** (Ctrl+1..4
   onglets, Ctrl+R analyse, Ctrl+B backtest, Ctrl+S screener, F1 aide), infobulles sur les
   boutons, barre de statut avec le backend de calcul actif (CPU / GPU CUDA) et une
-  **barre de progression** pendant les calculs (graduée pour le screener : x/N actifs ;
-  animée sinon — analyse, backtest, walk-forward, grid search, Monte Carlo, portefeuille).
+  **barre de progression** pendant les calculs : graduée **par stratégie** pour le
+  screener (x/N unités = actifs × stratégies, avec **écoulé + ETA**, même en pool de
+  processus), animée sinon (analyse, backtest, walk-forward, grid search, Monte Carlo,
+  portefeuille).
 - **Exports** : graphique en **PNG** (Ctrl+E), résultats du screener et trades en **CSV**,
   rapport affiché en **TXT** ; **historique des analyses** (screener / backtest /
   portefeuille) consultable et effaçable (Ctrl+H), stocké en SQLite.

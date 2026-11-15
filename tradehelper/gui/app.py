@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import queue
 import threading
+import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
@@ -1232,18 +1233,27 @@ class TradeHelperApp:
             messagebox.showinfo("Screener", "Entrez au moins un symbole.")
             return
         self.btn_scr.config(state="disabled")
-        self._progress_begin(determinate=True, maximum=len(symbols))
+        # unités de progression = symboles × stratégies (la barre avance à chaque stratégie)
+        total_units = len(symbols) * len(list_strategies())
+        self._progress_begin(determinate=True, maximum=total_units)
+        self.scr_progress.config(text=f"0/{total_units} — démarrage du calcul…")
+        self._scr_t0 = time.time()
         prog_q: queue.Queue = queue.Queue()
         finished = {"done": False}
 
         def poll_progress():
             try:
                 while True:
-                    item = prog_q.get_nowait()
-                    if item[0] == "bar":
-                        self._progress_set(item[1], item[2])
+                    item = prog_q.get_nowait()  # ("step", done, total, symbole)
+                    done, total, sym = item[1], item[2], item[3]
+                    self._progress_set(done, total)
+                    el = time.time() - self._scr_t0
+                    if done > 0:
+                        eta = el * (total - done) / done
+                        self.scr_progress.config(
+                            text=f"{done}/{total} — {sym} — écoulé {el:.0f} s — ETA ~{eta:.0f} s")
                     else:
-                        self.scr_progress.config(text=item[1])
+                        self.scr_progress.config(text=f"0/{total} — démarrage du calcul…")
             except queue.Empty:
                 pass
             if not finished["done"]:
@@ -1253,10 +1263,7 @@ class TradeHelperApp:
             return screen_assets(
                 vals["source"], symbols, period=vals["period"], interval=vals["interval"],
                 backend=vals.get("backend", "auto"),
-                on_progress=lambda i, n, s: (
-                    prog_q.put(("bar", i + 1, n)),
-                    prog_q.put(("label", f"{i + 1}/{n} — {s}")),
-                ),
+                on_progress=lambda d, t, s: prog_q.put(("step", d, t, s)),
             )
 
         def done(result, err):
