@@ -2,9 +2,14 @@ import unittest
 
 import numpy as np
 
+import tradehelper.data.events as events_mod
 from tradehelper.advice import advise
 from tradehelper.strategies import get_strategy, list_strategies
 from tests.helpers import make_ohlcv, make_trend_reversal
+
+
+def _no_network_cb(**kw):
+    return []  # pas de réseau dans les tests unitaires
 
 
 class TestStrategies(unittest.TestCase):
@@ -45,6 +50,13 @@ class TestStrategies(unittest.TestCase):
 
 
 class TestAdvice(unittest.TestCase):
+    def setUp(self):
+        self._orig_cb = events_mod.fetch_central_bank_events
+        events_mod.fetch_central_bank_events = _no_network_cb
+
+    def tearDown(self):
+        events_mod.fetch_central_bank_events = self._orig_cb
+
     def test_advise_crypto_no_fundamentals(self):
         df = make_ohlcv(n=120, drift=0.003)
         adv = advise(df, "BTCUSDT", source="crypto", interval="1d")
@@ -54,6 +66,20 @@ class TestAdvice(unittest.TestCase):
         self.assertFalse(adv["fundamental_available"])
         self.assertTrue(len(adv["reasons"]) > 0)
         self.assertIn("Swing", adv["horizon"])
+
+    def test_advise_avec_banques_centrales(self):
+        import datetime as dt
+        events_mod.fetch_central_bank_events = lambda **kw: [
+            {"date": dt.date.today() + dt.timedelta(days=5), "bank": "FOMC"},
+            {"date": dt.date.today() + dt.timedelta(days=40), "bank": "BCE"},
+        ]
+        df = make_ohlcv(n=200)
+        adv = advise(df, "BTCUSDT", source="crypto", interval="1d")
+        self.assertEqual(len(adv["cb_events"]), 2)
+        self.assertEqual(adv["cb_events"][0]["bank"], "FOMC")
+        # alerte uniquement si <= 14 j
+        self.assertTrue(any("Banques centrales" in r and "FOMC" in r for r in adv["reasons"]))
+        self.assertFalse(any("BCE" in r for r in adv["reasons"]))
 
     def test_advise_intraday_horizon(self):
         df = make_ohlcv(n=120)

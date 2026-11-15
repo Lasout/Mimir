@@ -11,8 +11,9 @@ pandas/numpy/matplotlib. Données **ouvertes et gratuites** (pas de clé API) :
 - crypto : API publique Binance (klines)
 - forex : taux quotidiens BCE via `frankfurter.dev`
 
-Cache CSV local dans `~/.cache/tradehelper/` (TTL 6 h en daily, 5 min en intraday,
-repli automatique hors-ligne). Yahoo rate-limite parfois (429) : le cache sert de repli.
+Cache SQLite local dans `~/.local/share/tradehelper/market.db` (+ snapshots Parquet),
+TTL par intervalle, repli automatique hors-ligne. Yahoo rate-limite parfois (429) :
+le store sert de repli.
 
 ## Architecture
 
@@ -20,6 +21,8 @@ repli automatique hors-ligne). Yahoo rate-limite parfois (429) : le cache sert d
 run.py                        # point d'entrée GUI : python3 run.py
 tradehelper/
 ├── config.py                 # configuration (défauts < fichier JSON $TRADEHELPER_CONFIG < env)
+│                             #   dont adjust_prices=True (défaut, vérifié en backtest) : changer
+│                             #   le flag vide le store (prix bruts vs ajustés incompatibles)
 ├── compute.py                # backend de calcul : auto/cpu/cuda (cupy GPU + xgboost CUDA),
 │                             #   détection GPU, add_all_gpu (équivalent cupy de add_all),
 │                             #   repli CPU automatique ; vérifier avec `python3 -m tradehelper.compute`
@@ -39,7 +42,9 @@ tradehelper/
 │   ├── sources.py            # load_data(...) : sert depuis le store, ne télécharge que les
 │   │                         #   plages manquantes (tête « max » sondée 1x/24h + queue fraîche
 │   │                         #   selon TTL) ; périodes : 1mo..5y + max
-│   ├── events.py             # calendrier des résultats (earnings) via yfinance, caché 24 h
+│   ├── events.py             # calendrier : earnings (yfinance) + réunions BCE/FOMC
+│   │                         #   (scraping pages officielles, parsers purs testés,
+│   │                         #   cache 24 h dans meta) ; affiché dans l'avis si < 14 j
 │   └── universe.py           # listes d'actifs connus par source (actions/crypto/forex)
 ├── indicators.py             # SMA/EMA, RSI Wilder, MACD, Bollinger, ATR, ADX, Donchian, OBV, VWAP...
 ├── strategies/               # registre STRATEGIES : ma_cross, rsi_reversion,
@@ -110,7 +115,7 @@ tests/                        # unittest, données synthétiques (tests/helpers.
 ```bash
 pip install --user -r requirements.txt     # pandas numpy matplotlib yfinance requests pillow
 python3 run.py                              # lancer la GUI (nécessite un display X)
-python3 -m unittest discover -s tests -v   # tests (143 tests, hors-ligne, sans display :
+python3 -m unittest discover -s tests -v   # tests (158 tests, hors-ligne, sans display :
                                             #   la GUI Tk n'est testée que par les scripts de
                                             #   fumée manuels, pas par la suite unitaire)
 # doc utilisateur : docs/guide-utilisateur.md (mkdocs.yml pour publication)

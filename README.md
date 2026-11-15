@@ -20,7 +20,13 @@ Outil d'aide au trading orienté **swing / day trading**, basé sur des **donné
   `TRADEHELPER_CONFIG` et par variables d'environnement (`TRADEHELPER_DB_PATH`,
   `ALPHAVANTAGE_API_KEY`, `TRADEHELPER_ADJUST_PRICES`).
 - **Calendrier des annonces** : date des prochains résultats (actions), cachée 24 h et
-  affichée dans l'avis avec une alerte si < 14 jours.
+  affichée dans l'avis avec une alerte si < 14 jours. **Calendrier des banques centrales**
+  (réunions BCE et FOMC à venir, jours de décision) scrapé sur les sites officiels, caché
+  24 h, affiché dans l'avis avec alerte si < 14 jours.
+- **Prix ajustés (dividendes/splits)** : `adjust_prices=True` par défaut (Yahoo
+  `auto_adjust`) — vérifié en backtest : KO 5 ans, ma_cross passe de +6,6 %/Sharpe 0,17
+  (brut) à +29,4 %/Sharpe 0,48 (ajusté). Le flag se change via `TRADEHELPER_ADJUST_PRICES`
+  ou la config ; changer de mode vide le cache et re-télécharge proprement.
 - **Analyse technique** : SMA/EMA, RSI (Wilder), MACD, bandes de Bollinger, ATR, ADX,
   canal de Donchian, OBV, VWAP, volatilité rolling.
 - **Backtesting pro** : moteur sans lookahead (signal de la barre *i* exécuté à l'open de

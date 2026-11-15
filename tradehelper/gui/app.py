@@ -709,6 +709,10 @@ class TradeHelperApp:
         t.insert("end", f"ATR : {adv['atr_pct'] * 100:.2f} %   Risque : {adv['risk']}   Horizon : {adv['horizon']}\n")
         if adv.get("earnings_date"):
             t.insert("end", f"Prochaine publication (résultats) : {adv['earnings_date']}\n")
+        import datetime as dt
+        for e in adv.get("cb_events", []):
+            d = dt.date.fromisoformat(e["date"])
+            t.insert("end", f"Réunion banque centrale ({e['bank']}) : {d:%d/%m/%Y} (dans {(d - dt.date.today()).days} j)\n")
         if adv["stop_suggestion"]:
             t.insert("end", f"Stop suggéré (2x ATR) : {adv['stop_suggestion']:.2f}\n")
         t.insert("end", "\nDétail :\n")

@@ -58,6 +58,20 @@ def advise(df: pd.DataFrame, symbol: str, source: str = "stock", interval: str =
         except Exception:
             earnings_date = None
 
+    # réunions de banques centrales à venir (BCE / FOMC), cache 24 h
+    cb_events: list[dict] = []
+    try:
+        import datetime as dt
+        from .data.events import fetch_central_bank_events
+        cb_events = fetch_central_bank_events()
+        for e in cb_events:
+            days = (e["date"] - dt.date.today()).days
+            if 0 <= days <= 14:
+                reasons.append(f"[Banques centrales] Réunion {e['bank']} le {e['date']:%d/%m/%Y} "
+                               f"(dans {days} j) : volatilité attendue, prudence sur la taille de position.")
+    except Exception:
+        cb_events = []
+
     atr_pct = tech["atr_pct"]
     stop_suggestion = None
     if atr_pct > 0:
@@ -89,6 +103,7 @@ def advise(df: pd.DataFrame, symbol: str, source: str = "stock", interval: str =
         "risk": risk,
         "horizon": horizon,
         "earnings_date": earnings_date.isoformat() if earnings_date else None,
+        "cb_events": [{"date": e["date"].isoformat(), "bank": e["bank"]} for e in cb_events[:5]],
         "fundamental_available": fund["available"],
         "fundamental_data": fund.get("data", {}),
     }

@@ -205,6 +205,31 @@ class Store:
                 (source, symbol.upper(), interval)).fetchone()
         return int(row[0])
 
+    def count_source(self, source: str) -> int:
+        """Nombre total de barres stockées pour une source (0 si aucune)."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*) FROM bars WHERE source=?", (source,)).fetchone()
+        return int(row[0])
+
+    def clear_bars(self) -> int:
+        """Vide toutes les barres (ex. changement de mode d'ajustement des prix)
+        + les snapshots Parquet. Retourne le nombre de lignes supprimées."""
+        with self._lock:
+            n = self._conn.execute("SELECT COUNT(*) FROM bars").fetchone()[0]
+            self._conn.execute("DELETE FROM bars")
+            self._conn.commit()
+        pq_dir = self.path.parent / "parquet"
+        removed = 0
+        if pq_dir.exists():
+            for p in pq_dir.glob("*.parquet"):
+                try:
+                    p.unlink()
+                    removed += 1
+                except OSError:
+                    pass
+        return int(n)
+
     # ------------------------------------------------------------- meta
     def meta_get(self, key: str):
         with self._lock:

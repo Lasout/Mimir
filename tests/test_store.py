@@ -137,6 +137,25 @@ class TestStore(unittest.TestCase):
         out = self.store.read("stock", "FAKE", "1d")
         self.assertEqual(len(out), 100)
 
+    def test_count_source_et_clear_bars(self):
+        self.assertEqual(self.store.count_source("stock"), 0)
+        df = make_ohlcv(n=50)
+        self.store.upsert(df, "stock", "FAKE", "1d")
+        self.store.upsert(df, "crypto", "BTCUSDT", "1d")
+        self.assertEqual(self.store.count_source("stock"), 50)
+        self.assertEqual(self.store.count_source("crypto"), 50)
+        n = self.store.clear_bars()
+        self.assertEqual(n, 100)
+        self.assertEqual(self.store.count_source("stock"), 0)
+        self.assertEqual(self.store.count("crypto", "BTCUSDT", "1d"), 0)
+        # les snapshots parquet sont aussi supprimés
+        import importlib.util
+        if importlib.util.find_spec("pyarrow") is not None:
+            self.store.upsert(df, "stock", "FAKE", "1d")
+            self.assertTrue(self.store._pq_path("stock", "FAKE", "1d").exists())
+            self.store.clear_bars()
+            self.assertFalse(self.store._pq_path("stock", "FAKE", "1d").exists())
+
     def test_runs_history(self):
         self.assertEqual(self.store.list_runs(), [])
         id1 = self.store.log_run("backtest", "aapl", "ma_cross : 12 trades", {"metrics": {"sharpe": 1.2}})

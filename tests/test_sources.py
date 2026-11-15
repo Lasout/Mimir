@@ -189,6 +189,38 @@ class TestLoadDataIncremental(unittest.TestCase):
         src.load_data("stock", "FAKE", period="max", interval="1d", store=self.store, cfg=cfg)
         self.assertIsNotNone(self.store.meta_get("head|stock|FAKE|1d"))
 
+    def test_adjust_prices_toggle_invalidates_store(self):
+        prov = FakeProvider("ok")
+        self._patch([prov])
+        src.load_data("stock", "FAKE", period="1mo", interval="1d", store=self.store,
+                      cfg=dict(self.cfg, adjust_prices=False))
+        self.assertEqual(self.store.meta_get("prices_adjusted"), False)
+        self.assertGreater(self.store.count("stock", "FAKE", "1d"), 0)
+        n1 = len(prov.calls)
+        # passage en ajusté : le store est vidé puis re-téléchargé
+        src.load_data("stock", "FAKE", period="1mo", interval="1d", store=self.store,
+                      cfg=dict(self.cfg, adjust_prices=True))
+        self.assertEqual(self.store.meta_get("prices_adjusted"), True)
+        self.assertGreater(len(prov.calls), n1)
+        # appel suivant en ajusté : servi par le store (TTL long), pas de re-fetch
+        n2 = len(prov.calls)
+        src.load_data("stock", "FAKE", period="1mo", interval="1d", store=self.store,
+                      cfg=dict(self.cfg, adjust_prices=True))
+        self.assertEqual(len(prov.calls), n2)
+
+    def test_legacy_store_sans_meta_consideree_brute(self):
+        prov = FakeProvider("ok")
+        self._patch([prov])
+        src.load_data("stock", "FAKE", period="1mo", interval="1d", store=self.store,
+                      cfg=dict(self.cfg, adjust_prices=False))
+        self.store.meta_set("prices_adjusted", None)  # simule une vieille base sans méta
+        n1 = len(prov.calls)
+        # mode ajusté demandé : la base legacy (brute) est invalidée et re-téléchargée
+        src.load_data("stock", "FAKE", period="1mo", interval="1d", store=self.store,
+                      cfg=dict(self.cfg, adjust_prices=True))
+        self.assertGreater(len(prov.calls), n1)
+        self.assertEqual(self.store.meta_get("prices_adjusted"), True)
+
     def test_bad_interval_raises(self):
         self._patch([FakeProvider()])
         with self.assertRaises(DataError):

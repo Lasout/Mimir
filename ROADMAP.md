@@ -16,21 +16,27 @@ Contexte projet pour agents : voir [`AGENTS.md`](AGENTS.md).
 - [ ] `pyproject.toml` + packaging pip installable (`pip install .`), puis exécutable
       autonome via PyInstaller
 
-## P1 — données : historique plus long et persistant
+## P1 — données : historique plus long et persistant (fait)
 
 - [x] **Historique long** : période `max` ; pagination Binance en boucle (1000 klines/appel,
       plafond `max_bars_per_fetch`) ; Yahoo `period="max"` pour actions daily/hebdo/mensuel
 - [x] **Base SQLite** à la place du cache CSV : `~/.local/share/tradehelper/market.db`,
-      upsert incrémental (tête sondée 1×/24 h, queue selon TTL), requêtes par symbole/intervalle
+      upsert incrémental (tête sondée 1×/24 h, queue selon TTL), requêtes par symbole/intervalle,
+      + cache Parquet read-through (snapshot complet + garde-fou de comptage, P4)
 - [x] **Fournisseurs configurables** avec fallback : `config.providers` (défaut
       stock: yahoo→alphavantage, crypto: binance→yahoo, forex: frankfurter→yahoo) ;
       Alpha Vantage si `ALPHAVANTAGE_API_KEY` ; config via `TRADEHELPER_CONFIG` (JSON) + env
 - [x] **Calendrier des annonces** : date des résultats (yfinance `calendar`), cachée 24 h
       dans le store, affichée dans l'avis avec alerte si < 14 j
-- [ ] Ajustement des prix (dividendes/splits) : flag `adjust_prices` dans la config
-      (Yahoo `auto_adjust`), à activer par défaut après vérification de l'impact backtest
-- [ ] Calendrier BCE/Fed (pas de source gratuite fiable identifiée — scraping à étudier)
-- [ ] Stooq : inutilisable (challenge JS anti-bot) — documenté, ne pas réessayer sans navigateur
+- [x] **Ajustement des prix (dividendes/splits)** : `adjust_prices` (Yahoo `auto_adjust`),
+      **activé par défaut** après vérification de l'impact backtest (KO 5 ans, ma_cross :
+      +29,4 %/Sharpe 0,48/DD −17,1 % ajusté vs +6,6 %/0,17/−22,4 % brut). Changer le flag
+      vide proprement le store (`clear_bars`, parquet compris) et re-télécharge ; une base
+      legacy sans méta est considérée comme brute
+- [x] **Calendrier BCE/Fed** : scraping des pages officielles (federalreserve.gov FOMC,
+      ecb.europa.eu Governing Council), parsers purs testés hors-ligne, jours de décision
+      uniquement, cache 24 h dans le store, affiché dans l'avis avec alerte si < 14 j
+- [x] Stooq : abandonné — challenge JS anti-bot, documenté, ne pas réessayer sans navigateur
 
 ## P2 — backtest & stratégies (niveau pro)
 

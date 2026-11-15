@@ -64,6 +64,19 @@ def load_data(source: str, symbol: str, period: str = "1y", interval: str = "1d"
     cfg = cfg or load_config()
     store = store or default_store()
 
+    # Mode d'ajustement des prix (actions) : si le flag change, le store mélangerait
+    # des prix bruts et ajustés -> on le vide proprement et on re-télécharge. Une base
+    # existante sans méta est considérée comme « brute » (comportement historique).
+    if source == "stock":
+        adjust = bool(cfg.get("adjust_prices", False))
+        stored_adj = store.meta_get("prices_adjusted")
+        if stored_adj is None:
+            stored_adj = False if store.count_source("stock") > 0 else adjust
+            store.meta_set("prices_adjusted", stored_adj)
+        if bool(stored_adj) != adjust:
+            store.clear_bars()
+            store.meta_set("prices_adjusted", adjust)
+
     bar = interval_timedelta(interval)
     now = utcnow_naive()
     end = now.normalize() + pd.Timedelta(days=1)  # inclut la barre du jour courant
