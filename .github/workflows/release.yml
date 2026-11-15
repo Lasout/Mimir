@@ -1,0 +1,57 @@
+name: Release
+
+# Se déclenche sur un tag sémantique `v*` (ex. v0.2.0) : build des paquets
+# PyInstaller multi-OS et publication d'une release GitHub avec les artifacts.
+# Le changelog est dans CHANGELOG.md (Keep a Changelog).
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Paquet PyInstaller (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-build.txt
+      - name: Build PyInstaller
+        run: pyinstaller packaging/tradehelper.spec --distpath dist --workpath build --noconfirm
+      - name: Artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tradeHelper-${{ matrix.os }}
+          path: dist/*
+
+  release:
+    name: Release GitHub
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-all
+          pattern: tradeHelper-*
+          merge-multiple: true
+      - name: Publier la release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-all/*
+          body: |
+            Paquets PyInstaller autonome (Linux / Windows / macOS).
+            Voir CHANGELOG.md pour le détail. Outil éducatif — pas un conseil en investissement.
+          generate_release_notes: true

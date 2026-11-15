@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
 
 
@@ -20,8 +22,8 @@ class Strategy:
     description = ""
     default_params: dict = {}
 
-    def __init__(self, **params):
-        self.params = {**self.default_params, **params}
+    def __init__(self, **params: Any) -> None:
+        self.params: dict[str, Any] = {**self.default_params, **params}
 
     def generate(self, df: pd.DataFrame) -> pd.DataFrame:
         raise NotImplementedError

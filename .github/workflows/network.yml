@@ -1,0 +1,24 @@
+name: Tests réseau (manuels)
+
+# Tests d'intégration avec données réelles (Yahoo/Binance/Frankfurter).
+# Lancés à la demande uniquement : coûteux et dépendants de fournisseurs externes.
+on:
+  workflow_dispatch:
+
+jobs:
+  network:
+    name: Intégration données réelles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Tests marqués network
+        env:
+          TRADEHELPER_NETWORK_TESTS: "1"
+        run: python -m unittest tests.test_integration_network -v

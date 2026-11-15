@@ -45,10 +45,12 @@ def run_portfolio(dfs: dict[str, pd.DataFrame], strategy_key: str = "ma_cross",
         df = df.dropna(subset=["Open", "High", "Low", "Close"])
         sigs[sym] = get_strategy(strategy_key, **(params or {})).generate(df)["position"]
     # index commun (intersection) et prix
-    idx = None
+    idx: pd.Index | None = None
     for sym, df in dfs.items():
         dfi = df.dropna(subset=["Open", "High", "Low", "Close"])
         idx = dfi.index if idx is None else idx.intersection(dfi.index)
+    if idx is None:
+        raise ValueError("Aucune donnée.")
     idx = idx.sort_values()
     n = len(idx)
     if n < 2:

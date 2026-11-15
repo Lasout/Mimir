@@ -124,7 +124,7 @@ def _rsi_gpu(close, period: int = 14):
     return cp.where(avg_loss > 0, out, 100.0)
 
 
-def add_all_gpu(df: pd.DataFrame, periods_per_year: int = 252) -> pd.DataFrame:
+def add_all_gpu(df: pd.DataFrame, periods_per_year: float = 252) -> pd.DataFrame:
     """Equivalent GPU (cupy) de indicators.add_all. Retourne un DataFrame pandas."""
     import cupy as cp
     out = df.copy()
@@ -182,7 +182,7 @@ def add_all_gpu(df: pd.DataFrame, periods_per_year: int = 252) -> pd.DataFrame:
 
 
 def add_all_dispatch(df: pd.DataFrame, backend: str = "auto",
-                     periods_per_year: int = 252) -> pd.DataFrame:
+                     periods_per_year: float = 252) -> pd.DataFrame:
     """add_all avec dispatch CPU/GPU. Toute erreur GPU retombe en CPU."""
     from .indicators import add_all as add_all_cpu
     if backend == "auto":

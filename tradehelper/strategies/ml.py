@@ -12,6 +12,8 @@ croisée temporelle (TimeSeriesSplit) est calculée une fois et exposée dans
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
@@ -51,11 +53,11 @@ class MLSignal(Strategy):
                       "threshold": 0.0, "margin": 0.02, "n_splits": 3, "atr_stop": 2.5,
                       "device": "auto"}  # auto | cpu | cuda (cuda -> XGBoost device="cuda")
 
-    def __init__(self, **params):
+    def __init__(self, **params: Any) -> None:
         super().__init__(**params)
         self.val_accuracy: float | None = None
 
-    def _make_model(self, device: str):
+    def _make_model(self, device: str) -> Any:
         if device == "cuda":
             try:
                 from xgboost import XGBClassifier

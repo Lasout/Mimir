@@ -8,6 +8,8 @@ L'equity OOS est chaînée (capital composé d'un bloc à l'autre).
 
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
 
 from ..strategies import get_strategy
@@ -20,12 +22,12 @@ def walk_forward(df: pd.DataFrame, strategy_key: str, params: dict | None = None
                  param_grid: dict[str, list] | None = None, n_splits: int = 5,
                  train_multiple: int = 2, anchored: bool = False,
                  initial_capital: float = 10_000.0, metric: str = "sharpe",
-                 min_trades: int = 1, **bt_kwargs) -> dict:
+                 min_trades: int = 1, **bt_kwargs: Any) -> dict:
     """Retourne : oos_equity, oos_metrics, splits (détail par bloc), in_sample_metrics."""
     df = df.dropna(subset=["Close"])
     n = len(df)
     test_len = max(20, n // (n_splits + 1))
-    splits = []
+    splits: list[dict] = []
     oos_equity_parts: list[pd.Series] = []
     oos_trades: list[pd.DataFrame] = []
     capital = float(initial_capital)

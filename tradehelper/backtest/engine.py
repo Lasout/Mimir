@@ -42,7 +42,7 @@ def run_backtest(
     sizing: str = "all_in",             # "all_in" | "risk" | "kelly"
     risk_per_trade: float = 0.01,
     kelly_fraction: float = 0.5,        # fraction de Kelly appliquée (ex. 0.5 = half-Kelly)
-    periods_per_year: int = 252,
+    periods_per_year: float = 252,
     funding_per_bar: float = 0.0,       # ex. 0.0001 = 1 pb/bar sur le notionnel (perps crypto)
     vol_target: float | None = None,    # vol annualisée cible (réduit la taille au-delà)
     max_drawdown_stop: float | None = None,  # ex. 0.20 -> aplatit si DD <= -20 %

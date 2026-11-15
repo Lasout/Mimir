@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from .adaptive import AdaptiveRegime
 from .base import Strategy
 from .ml import MLSignal
@@ -25,7 +27,7 @@ def list_strategies() -> list[dict]:
     ]
 
 
-def get_strategy(key: str, **params) -> Strategy:
+def get_strategy(key: str, **params: Any) -> Strategy:
     if key not in STRATEGIES:
         raise KeyError(f"Stratégie inconnue: {key} (disponibles: {sorted(STRATEGIES)})")
     return STRATEGIES[key](**params)

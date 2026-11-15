@@ -120,13 +120,32 @@ Outil d'aide au trading orienté **swing / day trading**, basé sur des **donné
 pip install --user -r requirements.txt   # pandas, numpy, matplotlib, yfinance, requests, pillow
 pip install --user -r requirements-parquet.txt   # optionnel : cache Parquet du store (pyarrow)
 pip install --user -r requirements-gpu.txt       # optionnel : mode calcul GPU CUDA (voir guide)
+# ou en package installable (pyproject.toml) :
+pip install --user . && tradehelper-gui
 ```
+
+**Configuration locale** : copier `.env.example` en `.env` (jamais commité) pour y mettre
+vos clés, ex. `ALPHAVANTAGE_API_KEY=...`. Ordre de priorité : défauts < `.env` < fichier
+JSON (`TRADEHELPER_CONFIG`) < variables d'environnement.
 
 ## Lancement
 
 ```bash
-python3 run.py
+python3 run.py        # ou `tradehelper-gui` si installé en package
 ```
+
+## Qualité, CI/CD et releases
+
+- **Tests** : `python3 -m unittest discover -s tests` (hors-ligne, sans display).
+  Tests d'intégration avec données réelles (marqués « network », skippés par défaut) :
+  `TRADEHELPER_NETWORK_TESTS=1 python3 -m unittest tests.test_integration_network -v`.
+- **Typage** : `python3 -m mypy` — `strict` sur le cœur (backtest, stratégies, screener),
+  config dans `pyproject.toml`.
+- **CI/CD** (GitHub Actions) : `.github/workflows/ci.yml` (tests multi-version Python,
+  mypy, scan de secrets gitleaks) sur push/PR ; `network.yml` (tests réseau, manuel) ;
+  `release.yml` sur tag `v*` (paquets PyInstaller multi-OS via `packaging/tradehelper.spec`
+  + release GitHub). Changelog : `CHANGELOG.md` (Keep a Changelog).
+- **Paquet autonome** : `pip install -r requirements-build.txt && pyinstaller packaging/tradehelper.spec`.
 
 📖 **Guide utilisateur complet** (tutoriel « premier backtest », onglets, raccourcis, watchlist,
 exports, thèmes, mode GPU) : [`docs/guide-utilisateur.md`](docs/guide-utilisateur.md)

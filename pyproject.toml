@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tradehelper"
+version = "0.1.0"
+description = "Outil d'aide au trading (swing / day) : backtesting, screener multi-stratégies, paper trading — données ouvertes, analyse technique + fondamentale, GUI Tkinter."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "lasout" }]
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "matplotlib>=3.7",
+    "yfinance>=0.2.40",
+    "requests>=2.31",
+    "pillow>=10",
+    "scikit-learn>=1.3",
+]
+
+[project.optional-dependencies]
+parquet = ["pyarrow>=14"]
+gpu = ["cupy-cuda12x>=13.6", "xgboost>=2.1"]
+dev = ["mypy>=1.11"]
+
+[project.scripts]
+tradehelper-gui = "tradehelper.gui.app:main"
+
+[tool.setuptools.packages.find]
+include = ["tradehelper*"]
+
+# Typage strict sur le cœur (backtest, stratégies, screener) — voir ROADMAP P5.
+# Le reste du code (gui, data, providers réseau, analyse) reste en typage progressif :
+# ces modules sont analysés (leurs types servent au cœur) mais leurs erreurs internes
+# ne bloquent pas le strict.
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["tradehelper.backtest", "tradehelper.strategies", "tradehelper.screener"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+# pandas : les DataFrame restent non paramétrés (pandas-stubs incomplet en 3.x)
+disable_error_code = ["type-arg"]
+
+[[tool.mypy.overrides]]
+module = ["tradehelper.data.*", "tradehelper.analysis.*", "tradehelper.compute",
+          "tradehelper.config", "tradehelper.advice", "tradehelper.fees",
+          "tradehelper.indicators", "tradehelper.timeutil", "tradehelper.paper",
+          "tradehelper.broker", "tradehelper.gui.*"]
+ignore_errors = true

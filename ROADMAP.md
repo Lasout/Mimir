@@ -128,12 +128,22 @@ Contexte projet pour agents : voir [`AGENTS.md`](AGENTS.md).
 - [x] **Documentation utilisateur** : `docs/guide-utilisateur.md` + `mkdocs.yml`
       (tutoriel « premier backtest », onglets, raccourcis, GPU, config)
 
-## P5 — qualité & distribution
+## P5 — qualité & distribution (fait)
 
-- [ ] Typage strict (`mypy --strict` sur le cœur : backtest, strategies, screener)
-- [ ] Tests d'intégration avec données réelles samplées (marquées `network`, exclues du CI rapide)
-- [ ] Releases GitHub (tags sémantiques), changelog, paquets PyInstaller multi-OS
-- [ ] Sécurité : variables d'environnement pour les clés (`.env` non commité), scan de secrets
+- [x] Typage strict : `pyproject.toml` + `python3 -m mypy` — `strict = true` sur le cœur
+      (`tradehelper.backtest`, `tradehelper.strategies`, `tradehelper.screener`),
+      modules périphériques (gui, data, providers, analyse) en typage progressif
+      (`ignore_errors` local) ; CI mypy sur PR/push
+- [x] Tests d'intégration avec données réelles samplées (`tests/test_integration_network.py`),
+      marqués et **skippés par défaut** : `TRADEHELPER_NETWORK_TESTS=1` pour les lancer
+      (CI rapide hors-ligne, job `network.yml` en `workflow_dispatch`)
+- [x] Releases GitHub : tags sémantiques `v*` -> workflow `release.yml` (PyInstaller
+      multi-OS via `packaging/tradehelper.spec`, release avec artifacts),
+      `CHANGELOG.md` (Keep a Changelog), `pyproject.toml` (package installable,
+      entry point `tradehelper-gui`)
+- [x] Sécurité : clés en variables d'environnement + fichier `.env` (chargé par
+      `config.py` sans dépendance, **non commité** — `.gitignore` + `.env.example`),
+      scan de secrets gitleaks en CI (`ci.yml`)
 
 ## Idées à creuser (non priorisées)
 

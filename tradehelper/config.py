@@ -1,7 +1,10 @@
 """Configuration de tradeHelper.
 
-Ordre de priorité : DEFAULTS < fichier JSON pointé par la variable d'environnement
-TRADEHELPER_CONFIG < variables d'environnement (TRADEHELPER_DB_PATH, ALPHAVANTAGE_API_KEY...).
+Ordre de priorité : DEFAULTS < fichier `.env` (répertoire courant, puis racine du projet)
+< fichier JSON pointé par TRADEHELPER_CONFIG < variables d'environnement
+(TRADEHELPER_DB_PATH, ALPHAVANTAGE_API_KEY...). Les vraies variables d'environnement
+gagnent toujours sur `.env` (convention dotenv). `.env` ne doit jamais être commité
+(voir .gitignore) : c'est le endroit pour les clés API.
 """
 
 from __future__ import annotations
@@ -49,8 +52,40 @@ _ENV_MAP = {
 }
 
 
+def _parse_dotenv(text: str) -> dict:
+    """Parse un contenu `.env` (KEY=VALUE, # commentaires, guillemets optionnels)."""
+    out = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key = key.strip()
+        val = val.strip().strip('"').strip("'")
+        if key:
+            out[key] = val
+    return out
+
+
+def _load_dotenv() -> dict:
+    """Lit un fichier `.env` (répertoire courant, puis racine du projet).
+
+    Sans dépendance externe. Retourne {} si absent.
+    """
+    candidates = [Path.cwd() / ".env", Path(__file__).resolve().parent.parent / ".env"]
+    for path in candidates:
+        if path.exists():
+            return _parse_dotenv(path.read_text(encoding="utf-8"))
+    return {}
+
+
 def load_config() -> dict:
     cfg = json.loads(json.dumps(DEFAULTS))  # copie profonde
+    for key, val in _load_dotenv().items():
+        if key in _ENV_MAP:  # une clé connue : on pose la valeur comme si c'était une env var
+            cfg[_ENV_MAP[key][0]] = _ENV_MAP[key][1](val)
+        elif key.startswith("TRADEHELPER_"):
+            cfg[key] = val
     path = os.environ.get("TRADEHELPER_CONFIG")
     if path and Path(path).exists():
         with open(path) as f:

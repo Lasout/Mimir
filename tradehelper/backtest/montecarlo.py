@@ -20,7 +20,7 @@ def monte_carlo_trades(trades: pd.DataFrame, initial_capital: float = 10_000.0,
         sample = rng.choice(rets, size=len(rets), replace=True)
         eq = initial_capital * np.cumprod(1.0 + sample)
         finals[s] = eq[-1]
-        maxdds[s] = ((eq - np.maximum.accumulate(eq)) / np.maximum.accumulate(eq)).min()
+        maxdds[s] = np.min((eq - np.maximum.accumulate(eq)) / np.maximum.accumulate(eq))
     return {
         "n_sims": n_sims,
         "n_trades": len(rets),
@@ -31,5 +31,5 @@ def monte_carlo_trades(trades: pd.DataFrame, initial_capital: float = 10_000.0,
         "p95_final": float(np.percentile(finals, 95)),
         "p5_maxdd": float(np.percentile(maxdds, 5)),
         "p95_maxdd": float(np.percentile(maxdds, 95)),
-        "worst_final": float(finals.min()),
+        "worst_final": float(np.min(finals)),
     }

@@ -20,7 +20,8 @@ le store sert de repli.
 ```
 run.py                        # point d'entrée GUI : python3 run.py
 tradehelper/
-├── config.py                 # configuration (défauts < fichier JSON $TRADEHELPER_CONFIG < env)
+├── config.py                 # configuration (défauts < .env < JSON $TRADEHELPER_CONFIG < env ;
+│                             #   .env parsé sans dépendance, jamais commité — clés API)
 │                             #   dont adjust_prices=True (défaut, vérifié en backtest) : changer
 │                             #   le flag vide le store (prix bruts vs ajustés incompatibles)
 ├── compute.py                # backend de calcul : auto/cpu/cuda (cupy GPU + xgboost CUDA),
@@ -130,9 +131,19 @@ tests/                        # unittest, données synthétiques (tests/helpers.
 ```bash
 pip install --user -r requirements.txt     # pandas numpy matplotlib yfinance requests pillow
 python3 run.py                              # lancer la GUI (nécessite un display X)
-python3 -m unittest discover -s tests -v   # tests (173 tests, hors-ligne, sans display :
-                                            #   la GUI Tk n'est testée que par les scripts de
-                                            #   fumée manuels, pas par la suite unitaire)
+python3 -m unittest discover -s tests -v   # tests hors-ligne, sans display (la GUI Tk
+                                            #   n'est testée que par les scripts de fumée
+                                            #   manuels, pas par la suite unitaire)
+TRADEHELPER_NETWORK_TESTS=1 python3 -m unittest tests.test_integration_network -v
+                                            # tests d'intégration RÉSEAU (marqués, skippés
+                                            #   sinon — ne JAMAIS les lancer sans le flag)
+python3 -m mypy                             # typage strict du cœur (pyproject.toml :
+                                            #   backtest, strategies, screener ; le reste en
+                                            #   ignore_errors) — P5
+# CI/CD : .github/workflows/ci.yml (tests multi-Python + mypy + gitleaks),
+#   network.yml (workflow_dispatch), release.yml (tags v* -> PyInstaller multi-OS)
+# packaging : pyproject.toml (pip install . -> tradehelper-gui), packaging/tradehelper.spec
+#   (pyinstaller), CHANGELOG.md (Keep a Changelog), .env.example (clés, .env gitignoré)
 # doc utilisateur : docs/guide-utilisateur.md (mkdocs.yml pour publication)
 ```
 
@@ -147,9 +158,11 @@ python3 -m unittest discover -s tests -v   # tests (173 tests, hors-ligne, sans 
 - UI : thème clair/sombre + taille de police + langue (fr/en, fr par défaut) persistés dans
   `meta` ; watchlist, historique des runs, paper trading et journal dans le store SQLite ;
   barre de progression pendant les calculs ; chargement lazy (mémo LRU des indicateurs) +
-  cache Parquet. Pas encore d'alertes ni de CI.
+  cache Parquet. CI/CD en place (tests + mypy strict + gitleaks ; releases v* avec
+  PyInstaller). Alertes non faites (hors périmètre demandé).
 
 ## Dépôt git
 
-Dépôt initialisé à la racine du projet (branche `main`). Ne push sur aucun remote sans
-autorisation explicite. Voir ROADMAP.md pour le CI/CD et les évolutions prévues.
+Dépôt initialisé à la racine du projet (branche `main`). Ne push sur aucun remote ni
+aucun tag `v*` sans autorisation explicite (le tag déclenche la release PyInstaller).
+CI/CD actif (`.github/workflows/`) ; évolutions prévues dans ROADMAP.md.

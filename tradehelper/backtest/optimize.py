@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import itertools
+from typing import Any
 
 import pandas as pd
 
@@ -12,7 +13,7 @@ from .engine import run_backtest
 
 def grid_search(df: pd.DataFrame, strategy_key: str, param_grid: dict[str, list],
                 metric: str = "sharpe", min_trades: int = 3, top: int | None = None,
-                **bt_kwargs) -> pd.DataFrame:
+                **bt_kwargs: Any) -> pd.DataFrame:
     """Teste toutes les combinaisons de `param_grid` et retourne un DataFrame trié.
 
     Colonnes : les paramètres + métriques (sharpe, total_return, max_drawdown,

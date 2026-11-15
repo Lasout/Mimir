@@ -13,7 +13,7 @@ def max_drawdown(equity: pd.Series) -> float:
 
 
 def compute_metrics(equity: pd.Series, trades: pd.DataFrame, positions: pd.Series,
-                    periods_per_year: int = 252, rf: float = 0.0) -> dict:
+                    periods_per_year: float = 252, rf: float = 0.0) -> dict:
     equity = equity.dropna()
     if len(equity) < 2:
         return {"total_return": 0.0, "cagr": 0.0, "sharpe": 0.0, "max_drawdown": 0.0,
@@ -71,7 +71,7 @@ def compute_metrics(equity: pd.Series, trades: pd.DataFrame, positions: pd.Serie
     }
 
 
-def periods_per_year(interval: str, source: str = "stock") -> int:
+def periods_per_year(interval: str, source: str = "stock") -> float:
     """Nombre de barres par an selon l'intervalle (approx.)."""
     if source == "crypto":
         return {"1d": 365, "12h": 730, "8h": 1095, "4h": 2190, "2h": 4380,

@@ -13,6 +13,7 @@ import os
 import queue
 import threading
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from typing import Any, Callable
 
 import pandas as pd
 
@@ -21,7 +22,7 @@ from .backtest import periods_per_year, run_backtest
 from .compute import add_all_dispatch, detect_backend
 from .data.sources import load_data
 from .data.universe import asset_type
-from .fees import get_fee_model
+from .fees import FeeModel, get_fee_model
 from .strategies import get_strategy, list_strategies
 
 BAR_HOURS = {"1d": 24.0, "1wk": 168.0, "1mo": 720.0, "12h": 12.0, "8h": 8.0,
@@ -91,10 +92,10 @@ def top_pick(rows: list[dict]) -> dict | None:
     if not cands:
         return None
 
-    def rank(r):
+    def rank(r: dict) -> float:
         sharpe = r.get("sharpe")
         sharpe_n = max(-1.0, min(1.0, sharpe / 2.0)) if isinstance(sharpe, (int, float)) else 0.0
-        return 0.6 * r["score"] + 0.4 * sharpe_n
+        return 0.6 * float(r["score"]) + 0.4 * sharpe_n
 
     best = max(cands, key=rank)
     best = dict(best)
@@ -166,7 +167,8 @@ def _screen_one(args: tuple) -> dict:
                 "risk": "", "strategy_label": ""}
 
 
-def _progress_reader(prog_q, on_progress, total_units, state, stop):
+def _progress_reader(prog_q: Any, on_progress: Callable[[int, int, str, str], None],
+                     total_units: int, state: dict[str, Any], stop: dict[str, bool]) -> None:
     """Lit la file de progression et appelle on_progress(n, total, sym, phase).
 
     Deux types de messages : ("step", sym, faits, total, stratégie) — compté dans la
@@ -192,8 +194,9 @@ def _progress_reader(prog_q, on_progress, total_units, state, stop):
 
 
 def screen_assets(source: str, symbols: list[str], period: str = "1y", interval: str = "1d",
-                  capital: float = 10_000.0, fee=None, slippage: float = 0.0005,
-                  strategies: list[str] | None = None, on_progress=None,
+                  capital: float = 10_000.0, fee: FeeModel | None = None, slippage: float = 0.0005,
+                  strategies: list[str] | None = None,
+                  on_progress: Callable[[int, int, str, str], None] | None = None,
                   backend: str = "auto", workers: int = 0) -> list[dict]:
     """Analyse chaque symbole avec toutes les stratégies. Retourne une liste de dicts.
 
@@ -228,7 +231,7 @@ def screen_assets(source: str, symbols: list[str], period: str = "1y", interval:
     args = [(source, s, period, interval, capital, fee, slippage, keys, backend, prog_q)
             for s in symbols]
 
-    state = {"n": 0, "sym": {}}
+    state: dict[str, Any] = {"n": 0, "sym": {}}
     stop = {"flag": False}
     reader = None
     if on_progress is not None:
