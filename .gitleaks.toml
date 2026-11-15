@@ -1,0 +1,10 @@
+title = "gitleaks — config tradeHelper"
+
+# Scan de l'arbre complet (--no-git) : robuste au premier push et aux shallow clones.
+# Allowlist : placeholders de tests (pas de vrais secrets).
+[allowlist]
+  description = "Placeholders dans les tests (ENVKEY/DOTENVKEY) et baseline detect-secrets"
+  paths = [
+    'tests/test_config\.py',
+    '\.secrets\.baseline',
+  ]

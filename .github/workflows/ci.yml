@@ -65,6 +65,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # --no-git : scan de l'arbre complet (robuste au premier push, où base^ n'existe pas)
       - uses: gitleaks/gitleaks-action@v2
+        with:
+          args: detect --source . --no-git --redact --exit-code=2 --report-format=sarif --report-path=results.sarif
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
