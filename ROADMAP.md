@@ -2,6 +2,8 @@
 
 Feuille de route de développement. Les cases cochées sont faites.
 Contexte projet pour agents : voir [`AGENTS.md`](AGENTS.md).
+Cahier des charges supplémentaire (paper trading conforme + audit anti-biais + go/no-go)
+: voir [`cadsup.md`](cadsup.md) — traduit en plan dans la **P6** ci-dessous.
 
 ## P0 — fondations (fait)
 
@@ -151,6 +153,91 @@ Contexte projet pour agents : voir [`AGENTS.md`](AGENTS.md).
 - [x] Sécurité : clés en variables d'environnement + fichier `.env` (chargé par
       `config.py` sans dépendance, **non commité** — `.gitignore` + `.env.example`),
       scan de secrets gitleaks en CI (`ci.yml`)
+
+## P6 — paper trading conforme & audit anti-biais (cahier des charges : `cadsup.md`)
+
+Spec de référence : [`cadsup.md`](cadsup.md) (moteur paper « comme un ordre réel » + audit
+anti-biais en tests automatisés + gouvernance + grille go/no-go capital réel).
+Légende : **(déjà en place)** = existe, à consolider ; le reste est à construire.
+
+### P6.1 — Moteur paper conforme cadsup §2 (remplissage J+1, coûts, R-multiples)
+
+- [ ] **Remplissage au open de J+1, jamais au prix du signal** : le conseil du screener est
+      produit à la clôture de J avec les données ≤ J ; le fill simulé se fait à l'open de
+      J+1 + slippage. *(Le backtest applique déjà « signal J → exécution open J+1 »
+      (test `test_no_lookahead_entry_next_bar`) ; le paper actuel remplit au prix courant
+      -> à refondre sur le même principe.)*
+- [ ] **Cycle quotidien idempotent** : rejouer le même jour ne crée pas de doublon
+      (clé `trade_id` = hash(strategy_version, asset, signal_date)) ; horodatage à
+      l'horloge réelle uniquement
+- [ ] **Convention stop prioritaire** si stop et cible sont touchés le même jour
+- [ ] **Journal par trade** conforme au schéma cadsup §2.4 : `trade_id`,
+      `strategy_version`, `signal_date`, `asset`, `direction`, `planned_entry`, `stop`,
+      `target`, `risk_pct`, `fill_price`, `fill_date`, `exit_*`, `fees`, `r_planned`,
+      `r_realized` (R = P&L / risque initial au stop, **net de frais et slippage**)
+      — migration de la table `paper_positions` actuelle
+- [ ] **Modèle de coûts non négociable** : frais aller-retour ≥ 0,1 % du notionnel
+      (configurable, min garde-fou), slippage fixe 0,05 %/côté ou basé sur la volatilité
+      récente, appliqué **contre** la position à l'entrée et à la sortie. Aucune métrique
+      de référence sans coûts (bouton « bruts » autorisé mais jamais affiché comme référence)
+- [ ] **Tableau de bord paper** (trades clôturés uniquement) : espérance en R (cible
+      +0,15R..+0,30R), win rate **et** payoff moyen ensemble, max drawdown en R et en %,
+      + benchmark **buy-and-hold/DCA des mêmes actifs sur la même fenêtre** + n trades
+      vs win rate d'équilibre (1/(1+payoff))
+
+### P6.2 — Versionnage & gouvernance cadsup §4
+
+- [ ] **Version de stratégie figée** : `strategy_version` = hash gelé du jeu de paramètres
+      (ex. semver + hash) ; toute modif de paramètre = nouvelle version et **remise à zéro
+      du compteur d'échantillon**
+- [ ] **Carnet d'idées séparé** (notes sans appliquer à la version en cours)
+- [ ] Capital simulé, risque/trade (ex. 1 %) et modèle de coûts **fixés en début de test**
+- [ ] **Aucun décrochage manuel** : tout signal émis est journalisé et « tradé »
+      virtuellement, même absurde
+- [ ] Revue à chaque palier de 100 trades clôturés (événement dans l'historique des runs)
+
+### P6.3 — Audit anti-biais en tests automatisés cadsup §3
+
+- [ ] **Look-ahead (priorité absolue)** : test de non-régression par troncature — 20 jours
+      historiques aléatoires (seed fixe), tronquer à J, recalculer le conseil, vérifier
+      l'identité avec le conseil « d'époque » ; `shift()` systématique ; pas de
+      resample/merge sur l'ensemble complet avant split train/test ; chasse aux indicateurs
+      « repaint » (ZigZag, fractales, Supertrend recalculé). *(Partiel : test
+      `test_no_lookahead_entry_next_bar` existe sur le backtest ; à étendre à l'avis/screener
+      et au remplissage J+1.)*
+- [ ] **Survivorship bias** : l'univers éligible au jour J est celui connu à J (crypto :
+      inclure disparus/illiquides) ; test : aucune info postérieure (delisting, cap/volume
+      actuels) dans le filtre historique
+- [ ] **Cherry-picking** : test — nombre de lignes du journal == nombre de signaux émis
+      par version de stratégie (aucune exclusion rétrospective)
+- [ ] **Overfitting** : split temporel train/test + walk-forward existants ; ajouter :
+      alerte « trop de paramètres » (score pénalisé déjà dans `grid_search`, à afficher)
+      et test de version gelée (changer un paramètre -> nouvelle `strategy_version`)
+- [ ] **Régime de marché** : taguer chaque métrique du régime de la période (haussier/plat/
+      baissier via tendance d'un indice de référence, ex. SPY/BTC) ; aucune conclusion
+      préliminaire hors échantillon couvrant ≥ 2 régimes
+- [ ] **Significativité** : seuil ≥ 100 trades clôturés par version avant toute conclusion ;
+      afficher l'intervalle de confiance de l'espérance (± 2·σ_R/√n) — si l'IC contient 0,
+      afficher « on ne sait rien »
+
+### P6.4 — Grille go/no-go capital réel cadsup §5
+
+- [ ] Page/panneau « go/no-go » calculant les 6 critères **simultanément** : ≥ 100 trades
+      clôturés ; espérance nette > +0,15 R avec IC excluant 0 ; payoff ≥ 1,5 ou win rate
+      ≥ 45 % (avec espérance positive) ; max DD ≤ 20–25 % ; perf nette > buy-and-hold des
+      mêmes actifs ; échantillon ≥ 2 régimes. Un seul manquant = « on continue le paper ».
+- [ ] Le déblocage du broker réel (IBKR) reste verrouillé tant que la grille n'est pas
+      verte **et** que `TRADEHELPER_ALLOW_LIVE_TRADING=1` + confirmation + plafond
+      ne sont pas réunis (garde-fous existants, à chaîner avec la grille)
+
+### Ordre de réalisation proposé
+
+1. P6.3 look-ahead (tests) — la fiabilité de la mesure est la partie 1 du chantier
+2. P6.1 moteur paper conforme (fill J+1, coûts, journal R, idempotence)
+3. P6.1 dashboard + benchmark buy-and-hold
+4. P6.2 versionnage & gouvernance
+5. P6.3 reste des audits (survivorship, cherry-picking, régime, significativité)
+6. P6.4 grille go/no-go + chaînage avec le broker
 
 ## Idées à creuser (non priorisées)
 

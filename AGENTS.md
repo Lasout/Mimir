@@ -167,6 +167,16 @@ python3 -m mypy                             # typage strict du cœur (pyproject.
   cache Parquet. CI/CD en place (tests + mypy strict + gitleaks ; releases v* avec
   PyInstaller). Alertes non faites (hors périmètre demandé).
 
+## Cahier des charges supplémentaire (cadsup.md)
+
+`cadsup.md` : moteur paper conforme — remplissage au open de J+1 (jamais au prix du
+signal), coûts non négociables (frais ≥ 0,1 % AR, slippage contre la position), accounting
+en multiples de R — audit anti-biais en tests automatisés (look-ahead, survivorship,
+cherry-picking, overfitting, régime, significativité ≥ 100 trades), gouvernance (version
+figée), grille go/no-go capital réel. Plan détaillé dans ROADMAP.md section **P6**.
+Toute statistique produite par l'outil doit être lue à travers ces règles : pas de
+métrique de référence sans coûts, pas de conclusion < 100 trades, look-ahead interdit.
+
 ## Dépôt git
 
 Dépôt initialisé à la racine du projet (branche `main`), remote `origin` =
