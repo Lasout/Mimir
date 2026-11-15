@@ -9,3 +9,5 @@ build/
 .env
 *.secret
 .DS_Store
+.coverage
+htmlcov/
