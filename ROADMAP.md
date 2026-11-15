@@ -2,8 +2,8 @@
 
 Feuille de route de développement. Les cases cochées sont faites.
 Contexte projet pour agents : voir [`AGENTS.md`](AGENTS.md).
-Cahier des charges supplémentaire (paper trading conforme + audit anti-biais + go/no-go)
-: voir [`cadsup.md`](cadsup.md) — traduit en plan dans la **P6** ci-dessous.
+Cahier des charges (paper trading conforme + audit anti-biais + go/no-go)
+: voir [`SPEC.md`](SPEC.md) — traduit en plan dans la **P6** ci-dessous.
 
 ## P0 — fondations (fait)
 
@@ -154,13 +154,13 @@ Cahier des charges supplémentaire (paper trading conforme + audit anti-biais + 
       `config.py` sans dépendance, **non commité** — `.gitignore` + `.env.example`),
       scan de secrets gitleaks en CI (`ci.yml`)
 
-## P6 — paper trading conforme & audit anti-biais (cahier des charges : `cadsup.md`)
+## P6 — paper trading conforme & audit anti-biais (cahier des charges : `SPEC.md`)
 
-Spec de référence : [`cadsup.md`](cadsup.md) (moteur paper « comme un ordre réel » + audit
+Spec de référence : [`SPEC.md`](SPEC.md) (moteur paper « comme un ordre réel » + audit
 anti-biais en tests automatisés + gouvernance + grille go/no-go capital réel).
 Légende : **(déjà en place)** = existe, à consolider ; le reste est à construire.
 
-### P6.1 — Moteur paper conforme cadsup §2 (remplissage J+1, coûts, R-multiples)
+### P6.1 — Moteur paper conforme SPEC §3.5 (PAP-xx) (remplissage J+1, coûts, R-multiples)
 
 - [ ] **Remplissage au open de J+1, jamais au prix du signal** : le conseil du screener est
       produit à la clôture de J avec les données ≤ J ; le fill simulé se fait à l'open de
@@ -171,7 +171,7 @@ Légende : **(déjà en place)** = existe, à consolider ; le reste est à const
       (clé `trade_id` = hash(strategy_version, asset, signal_date)) ; horodatage à
       l'horloge réelle uniquement
 - [ ] **Convention stop prioritaire** si stop et cible sont touchés le même jour
-- [ ] **Journal par trade** conforme au schéma cadsup §2.4 : `trade_id`,
+- [ ] **Journal par trade** conforme au schéma SPEC §3.5 PAP-07 : `trade_id`,
       `strategy_version`, `signal_date`, `asset`, `direction`, `planned_entry`, `stop`,
       `target`, `risk_pct`, `fill_price`, `fill_date`, `exit_*`, `fees`, `r_planned`,
       `r_realized` (R = P&L / risque initial au stop, **net de frais et slippage**)
@@ -185,7 +185,7 @@ Légende : **(déjà en place)** = existe, à consolider ; le reste est à const
       + benchmark **buy-and-hold/DCA des mêmes actifs sur la même fenêtre** + n trades
       vs win rate d'équilibre (1/(1+payoff))
 
-### P6.2 — Versionnage & gouvernance cadsup §4
+### P6.2 — Versionnage & gouvernance SPEC §3.7 (GOU-xx)
 
 - [ ] **Version de stratégie figée** : `strategy_version` = hash gelé du jeu de paramètres
       (ex. semver + hash) ; toute modif de paramètre = nouvelle version et **remise à zéro
@@ -196,7 +196,7 @@ Légende : **(déjà en place)** = existe, à consolider ; le reste est à const
       virtuellement, même absurde
 - [ ] Revue à chaque palier de 100 trades clôturés (événement dans l'historique des runs)
 
-### P6.3 — Audit anti-biais en tests automatisés cadsup §3
+### P6.3 — Audit anti-biais en tests automatisés SPEC §3.6 (AUD-xx)
 
 - [ ] **Look-ahead (priorité absolue)** : test de non-régression par troncature — 20 jours
       historiques aléatoires (seed fixe), tronquer à J, recalculer le conseil, vérifier
@@ -220,7 +220,7 @@ Légende : **(déjà en place)** = existe, à consolider ; le reste est à const
       afficher l'intervalle de confiance de l'espérance (± 2·σ_R/√n) — si l'IC contient 0,
       afficher « on ne sait rien »
 
-### P6.4 — Grille go/no-go capital réel cadsup §5
+### P6.4 — Grille go/no-go capital réel SPEC §5 (GNG-xx)
 
 - [ ] Page/panneau « go/no-go » calculant les 6 critères **simultanément** : ≥ 100 trades
       clôturés ; espérance nette > +0,15 R avec IC excluant 0 ; payoff ≥ 1,5 ou win rate

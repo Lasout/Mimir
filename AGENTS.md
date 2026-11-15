@@ -167,9 +167,9 @@ python3 -m mypy                             # typage strict du cœur (pyproject.
   cache Parquet. CI/CD en place (tests + mypy strict + gitleaks ; releases v* avec
   PyInstaller). Alertes non faites (hors périmètre demandé).
 
-## Cahier des charges supplémentaire (cadsup.md)
+## Cahier des charges (SPEC.md)
 
-`cadsup.md` : moteur paper conforme — remplissage au open de J+1 (jamais au prix du
+`SPEC.md` : moteur paper conforme — remplissage au open de J+1 (jamais au prix du
 signal), coûts non négociables (frais ≥ 0,1 % AR, slippage contre la position), accounting
 en multiples de R — audit anti-biais en tests automatisés (look-ahead, survivorship,
 cherry-picking, overfitting, régime, significativité ≥ 100 trades), gouvernance (version

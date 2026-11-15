@@ -5,7 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Lasout/Mimir/blob/main/LICENSE)
 
 > Pour les agents qui reprennent le projet : lire d'abord [`AGENTS.md`](AGENTS.md)
-> (architecture, règles, commandes). La feuille de route est dans [`ROADMAP.md`](ROADMAP.md).
+> (architecture, règles, commandes), le cahier des charges dans [`SPEC.md`](SPEC.md)
+> et la feuille de route dans [`ROADMAP.md`](ROADMAP.md).
 
 Outil d'aide au trading orienté **swing / day trading**, basé sur des **données ouvertes**
 (gratuites, sans clé API) et combinant **analyse technique** et **analyse fondamentale**.
