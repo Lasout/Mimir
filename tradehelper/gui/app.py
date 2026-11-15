@@ -28,6 +28,7 @@ from ..screener import screen_assets, top_pick
 from ..strategies import get_strategy, list_strategies
 from .chart import attach_price_crosshair, draw_equity_chart, draw_price_chart
 from .export import export_figure_png, export_screener_csv, export_text_report, export_trades_csv
+from .i18n import LANGS, get_lang, t
 from .theme import FONT_SCALE_MAX, FONT_SCALE_MIN, apply_mpl_theme, apply_ttk
 
 PERIODS = ["1mo", "3mo", "6mo", "1y", "2y", "5y", "max"]
@@ -76,7 +77,9 @@ class ToolTip:
 class TradeHelperApp:
     def __init__(self, root: tk.Tk):
         self.root = root
-        root.title("tradeHelper — aide au trading (swing / day)")
+        self.lang = get_lang()
+        self._i18n_reg: list[tuple] = []  # (widget, attr, clé) pour le changement de langue à chaud
+        root.title(t("app_title", self.lang))
         root.geometry("1360x860")
         self.df: pd.DataFrame | None = None
         self.adv: dict | None = None
@@ -98,9 +101,13 @@ class TradeHelperApp:
                 self.font_scale = float(self.store.meta_get("ui.font_scale") or 1.0)
             except (TypeError, ValueError):
                 self.font_scale = 1.0
+            self.lang = self.store.meta_get("ui.lang") or self.lang
+            if self.lang not in LANGS:
+                self.lang = "fr"
+            root.title(t("app_title", self.lang))
 
         # --- barre d'instrument globale, partagée par tous les onglets ---
-        ctx_frame = ttk.LabelFrame(root, text="Instrument (commun à tous les onglets)")
+        ctx_frame = ttk.LabelFrame(root, text=t("ctx_frame", self.lang))
         ctx_frame.pack(fill="x", padx=6, pady=(6, 0))
         self.ctx = self._context_frame(ctx_frame)
 
@@ -110,10 +117,10 @@ class TradeHelperApp:
         self.tab_backtest = ttk.Frame(self.notebook)
         self.tab_screener = ttk.Frame(self.notebook)
         self.tab_portfolio = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_analyse, text="Analyse & conseils")
-        self.notebook.add(self.tab_backtest, text="Backtest")
-        self.notebook.add(self.tab_screener, text="Screener multi-stratégies")
-        self.notebook.add(self.tab_portfolio, text="Portefeuille multi-actifs")
+        self.notebook.add(self.tab_analyse, text=t("tab_analyse", self.lang))
+        self.notebook.add(self.tab_backtest, text=t("tab_backtest", self.lang))
+        self.notebook.add(self.tab_screener, text=t("tab_screener", self.lang))
+        self.notebook.add(self.tab_portfolio, text=t("tab_portfolio", self.lang))
 
         self._build_analyse_tab()
         self._build_backtest_tab()
@@ -131,7 +138,7 @@ class TradeHelperApp:
 
         bottom = ttk.Frame(root)
         bottom.pack(fill="x", side="bottom")
-        self.status = tk.StringVar(value="Prêt. Données ouvertes : Yahoo Finance, Binance, BCE.")
+        self.status = tk.StringVar(value=t("status_ready", self.lang))
         ttk.Label(bottom, textvariable=self.status, style="Status.TLabel", anchor="w").pack(
             side="left", fill="x", expand=True)
         self.backend_var = tk.StringVar(value="")
@@ -188,23 +195,22 @@ class TradeHelperApp:
 
     def _context_frame(self, parent) -> dict:
         frame = parent
-        ttk.Label(frame, text="Source :").grid(row=0, column=0, sticky="w", padx=4, pady=4)
+        for col, key in ((0, "source"), (2, "symbol"), (4, "period"), (6, "interval"), (8, "backend")):
+            lbl = ttk.Label(frame)
+            self._set_text(lbl, key)
+            lbl.grid(row=0, column=col, sticky="w", padx=4, pady=4)
         source = ttk.Combobox(frame, values=list(SOURCE_LABELS.keys()), state="readonly", width=10)
         source.set("stock")
         source.grid(row=0, column=1, padx=4)
-        ttk.Label(frame, text="Actif :").grid(row=0, column=2, sticky="w", padx=4)
         symbol = ttk.Combobox(frame, values=universe_for("stock"), width=14)
         symbol.set(DEFAULT_SYMBOLS["stock"])
         symbol.grid(row=0, column=3, padx=4)
-        ttk.Label(frame, text="Période :").grid(row=0, column=4, sticky="w", padx=4)
         period = ttk.Combobox(frame, values=PERIODS, state="readonly", width=7)
         period.set("1y")
         period.grid(row=0, column=5, padx=4)
-        ttk.Label(frame, text="Intervalle :").grid(row=0, column=6, sticky="w", padx=4)
         interval = ttk.Combobox(frame, values=INTERVALS["stock"], state="readonly", width=7)
         interval.set("1d")
         interval.grid(row=0, column=7, padx=4)
-        ttk.Label(frame, text="Calcul :").grid(row=0, column=8, sticky="w", padx=(12, 4))
         backend = ttk.Combobox(frame, values=["auto", "cpu", "cuda"], state="readonly", width=7)
         backend.set("auto")
         backend.grid(row=0, column=9, padx=4)
@@ -268,11 +274,23 @@ class TradeHelperApp:
         }
 
     def _load_df(self, vals: dict) -> pd.DataFrame:
+        """Charge + indicateurs, avec mémo LRU (chargement lazy : on ne recalcule pas
+        un actif déjà chargé avec les mêmes réglages dans la session)."""
         if not vals["symbol"]:
             raise DataError("Symbole vide.")
+        if not hasattr(self, "_df_memo"):
+            self._df_memo = {}
+        key = (vals["source"], vals["symbol"].upper(), vals["period"], vals["interval"],
+               vals.get("backend", "auto"))
+        if key in self._df_memo:
+            return self._df_memo[key]
         df = load_data(vals["source"], vals["symbol"], period=vals["period"], interval=vals["interval"])
         ppy = periods_per_year(vals["interval"], vals["source"])
-        return add_all_dispatch(df, backend=vals.get("backend", "auto"), periods_per_year=ppy)
+        out = add_all_dispatch(df, backend=vals.get("backend", "auto"), periods_per_year=ppy)
+        if len(self._df_memo) >= 4:  # LRU simple : 4 actifs max en mémoire
+            self._df_memo.pop(next(iter(self._df_memo)))
+        self._df_memo[key] = out
+        return out
 
     # ------------------------------------------------------------- thème & UI
     def apply_ui_theme(self):
@@ -294,6 +312,33 @@ class TradeHelperApp:
                 canvas.get_tk_widget().configure(
                     bg=style.lookup("TFrame", "background"))
         self._redraw_charts()
+
+    # ------------------------------------------------------------- i18n
+    def _set_text(self, widget, key: str, attr: str = "text"):
+        """Pose un libellé traduit et l'enregistre pour le changement de langue à chaud."""
+        widget.configure(**{attr: t(key, self.lang)})
+        self._i18n_reg.append((widget, attr, key))
+
+    def set_language(self, lang: str):
+        if lang not in LANGS:
+            return
+        self.lang = lang
+        if self.store is not None:
+            try:
+                self.store.meta_set("ui.lang", lang)
+            except Exception:
+                pass
+        for w, attr, key in self._i18n_reg:
+            try:
+                w.configure(**{attr: t(key, lang)})
+            except tk.TclError:
+                pass
+        for tab, key in ((self.tab_analyse, "tab_analyse"), (self.tab_backtest, "tab_backtest"),
+                         (self.tab_screener, "tab_screener"), (self.tab_portfolio, "tab_portfolio")):
+            self.notebook.tab(tab, text=t(key, lang))
+        self.root.title(t("app_title", lang))
+        self.menubar.destroy()
+        self._build_menu()
 
     def _redraw_charts(self):
         """Redessine les graphiques existants avec le thème courant (si des données sont chargées)."""
@@ -333,52 +378,60 @@ class TradeHelperApp:
 
     # ------------------------------------------------------------- menu & raccourcis
     def _build_menu(self):
+        lang = self.lang
         menubar = tk.Menu(self.root)
         self.theme_var = tk.BooleanVar(value=self.theme_name == "sombre")
+        self.lang_var = tk.StringVar(value=lang)
 
         m_fichier = tk.Menu(menubar, tearoff=0)
-        m_fichier.add_command(label="Exporter le graphique en PNG", accelerator="Ctrl+E",
+        m_fichier.add_command(label=t("menu_export_png", lang), accelerator="Ctrl+E",
                               command=self._export_png_active)
-        m_fichier.add_command(label="Exporter le screener en CSV", accelerator="Ctrl+Shift+S",
+        m_fichier.add_command(label=t("menu_export_screener", lang), accelerator="Ctrl+Shift+S",
                               command=self._export_screener_csv)
-        m_fichier.add_command(label="Exporter les trades du backtest en CSV",
+        m_fichier.add_command(label=t("menu_export_trades", lang),
                               command=self._export_trades_csv)
-        m_fichier.add_command(label="Exporter le rapport affiché en TXT",
+        m_fichier.add_command(label=t("menu_export_report", lang),
                               command=self._export_report_txt)
         m_fichier.add_separator()
-        m_fichier.add_command(label="Historique des analyses", accelerator="Ctrl+H",
+        m_fichier.add_command(label=t("menu_history", lang), accelerator="Ctrl+H",
                               command=self._show_history)
         m_fichier.add_separator()
-        m_fichier.add_command(label="Quitter", accelerator="Ctrl+Q", command=self.root.destroy)
-        menubar.add_cascade(label="Fichier", menu=m_fichier)
+        m_fichier.add_command(label=t("menu_quit", lang), accelerator="Ctrl+Q", command=self.root.destroy)
+        menubar.add_cascade(label=t("menu_file", lang), menu=m_fichier)
 
         m_onglets = tk.Menu(menubar, tearoff=0)
-        for i, (tab, label) in enumerate([(self.tab_analyse, "Analyse & conseils"),
-                                          (self.tab_backtest, "Backtest"),
-                                          (self.tab_screener, "Screener"),
-                                          (self.tab_portfolio, "Portefeuille")], start=1):
-            m_onglets.add_command(label=f"{label}", accelerator=f"Ctrl+{i}",
-                                  command=lambda t=tab: self.notebook.select(t))
+        for i, (tab, key) in enumerate([(self.tab_analyse, "tab_analyse"),
+                                        (self.tab_backtest, "tab_backtest"),
+                                        (self.tab_screener, "tab_screener"),
+                                        (self.tab_portfolio, "tab_portfolio")], start=1):
+            m_onglets.add_command(label=t(key, lang), accelerator=f"Ctrl+{i}",
+                                  command=lambda tt=tab: self.notebook.select(tt))
         m_onglets.add_separator()
-        m_onglets.add_command(label="Lancer l'analyse", accelerator="Ctrl+R", command=self.on_analyse)
-        m_onglets.add_command(label="Lancer le backtest", accelerator="Ctrl+B", command=self.on_backtest)
-        m_onglets.add_command(label="Lancer le screener", accelerator="Ctrl+S", command=self.on_screener)
-        menubar.add_cascade(label="Onglets", menu=m_onglets)
+        m_onglets.add_command(label=t("btn_analyse", lang), accelerator="Ctrl+R", command=self.on_analyse)
+        m_onglets.add_command(label=t("btn_backtest", lang), accelerator="Ctrl+B", command=self.on_backtest)
+        m_onglets.add_command(label=t("btn_screener", lang), accelerator="Ctrl+S", command=self.on_screener)
+        menubar.add_cascade(label=t("menu_tabs", lang), menu=m_onglets)
 
         m_aff = tk.Menu(menubar, tearoff=0)
-        m_aff.add_checkbutton(label="Thème sombre", variable=self.theme_var,
+        m_aff.add_checkbutton(label=t("menu_dark", lang), variable=self.theme_var,
                               accelerator="Ctrl+D", command=self.toggle_theme)
-        m_aff.add_command(label="Agrandir le texte", accelerator="Ctrl++",
+        m_aff.add_command(label=t("menu_font_up", lang), accelerator="Ctrl++",
                           command=lambda: self.zoom_font(+0.1))
-        m_aff.add_command(label="Réduire le texte", accelerator="Ctrl+-",
+        m_aff.add_command(label=t("menu_font_down", lang), accelerator="Ctrl+-",
                           command=lambda: self.zoom_font(-0.1))
-        menubar.add_cascade(label="Affichage", menu=m_aff)
+        m_aff.add_separator()
+        m_aff.add_radiobutton(label=t("lang_fr", lang), variable=self.lang_var, value="fr",
+                              command=lambda: self.set_language("fr"))
+        m_aff.add_radiobutton(label=t("lang_en", lang), variable=self.lang_var, value="en",
+                              command=lambda: self.set_language("en"))
+        menubar.add_cascade(label=t("menu_view", lang), menu=m_aff)
 
         m_aide = tk.Menu(menubar, tearoff=0)
-        m_aide.add_command(label="Raccourcis clavier", accelerator="F1", command=self._show_shortcuts)
-        m_aide.add_command(label="À propos", command=self._show_about)
-        menubar.add_cascade(label="Aide", menu=m_aide)
+        m_aide.add_command(label=t("menu_shortcuts", lang), accelerator="F1", command=self._show_shortcuts)
+        m_aide.add_command(label=t("menu_about", lang), command=self._show_about)
+        menubar.add_cascade(label=t("menu_help", lang), menu=m_aide)
 
+        self.menubar = menubar
         self.root.config(menu=menubar)
 
     def _bind_shortcuts(self):
@@ -402,7 +455,7 @@ class TradeHelperApp:
 
     def _show_shortcuts(self):
         dlg = tk.Toplevel(self.root)
-        dlg.title("Raccourcis clavier")
+        dlg.title(t("shortcuts_title", self.lang))
         txt = scrolledtext.ScrolledText(dlg, width=52, height=20, wrap="word")
         txt.pack(padx=8, pady=8)
         txt.insert("end", "\n".join([
@@ -419,15 +472,12 @@ class TradeHelperApp:
             "graphique de prix = réticule + OHLC de la barre.",
         ]))
         txt.config(state="disabled")
-        ttk.Button(dlg, text="Fermer", command=dlg.destroy).pack(pady=(0, 8))
+        b_close = ttk.Button(dlg, command=dlg.destroy)
+        self._set_text(b_close, "close")
+        b_close.pack(pady=(0, 8))
 
     def _show_about(self):
-        messagebox.showinfo(
-            "À propos de tradeHelper",
-            "tradeHelper — aide au trading (swing / day) : backtests, screener multi-stratégies,\n"
-            "conseils techniques + fondamentaux, portefeuille multi-actifs.\n"
-            "Données ouvertes : Yahoo Finance, Binance, BCE.\n\n"
-            "Avertissement : outil éducatif, pas un conseil en investissement.")
+        messagebox.showinfo(t("about_title", self.lang), t("about_text", self.lang))
 
     # ------------------------------------------------------------- exports
     def _active_fig(self):
@@ -553,7 +603,7 @@ class TradeHelperApp:
             messagebox.showinfo("Historique", "Stockage local indisponible.")
             return
         dlg = tk.Toplevel(self.root)
-        dlg.title("Historique des analyses")
+        dlg.title(t("history_title", self.lang))
         dlg.geometry("760x420")
         cols = ("date", "type", "symbole", "résumé")
         tree = ttk.Treeview(dlg, columns=cols, show="headings", height=16)
@@ -569,21 +619,28 @@ class TradeHelperApp:
                 tree.insert("", "end", values=(r["created_at"], r["kind"], r["symbol"], r["summary"]))
 
         refresh()
-        ttk.Button(dlg, text="Effacer l'historique", command=lambda: (
+        b_clear = ttk.Button(dlg, command=lambda: (
             self.store.clear_runs(), refresh(),
-            self.status.set("Historique effacé."))).pack(pady=(0, 8))
-        ttk.Button(dlg, text="Fermer", command=dlg.destroy).pack(pady=(0, 8))
+            self.status.set("Historique effacé.")))
+        self._set_text(b_clear, "history_clear")
+        b_clear.pack(pady=(0, 8))
+        b_close2 = ttk.Button(dlg, command=dlg.destroy)
+        self._set_text(b_close2, "close")
+        b_close2.pack(pady=(0, 8))
 
     # ------------------------------------------------------------- onglet 1
     def _build_analyse_tab(self):
         top = ttk.Frame(self.tab_analyse)
         top.pack(fill="x", padx=6, pady=4)
-        ttk.Label(top, text="Stratégie affichée sur le graphique :").pack(side="left", padx=(0, 4))
+        lbl = ttk.Label(top)
+        self._set_text(lbl, "analyse_strat_label")
+        lbl.pack(side="left", padx=(0, 4))
         self.strat_var = tk.StringVar(value=list_strategies()[0]["key"])
         self.strat_box = ttk.Combobox(top, values=[s["key"] for s in list_strategies()],
                                       textvariable=self.strat_var, state="readonly", width=18)
         self.strat_box.pack(side="left")
-        self.btn_analyse = ttk.Button(top, text="Charger & analyser l'actif", command=self.on_analyse)
+        self.btn_analyse = ttk.Button(top, command=self.on_analyse)
+        self._set_text(self.btn_analyse, "btn_analyse")
         self.btn_analyse.pack(side="left", padx=8)
 
         paned = ttk.PanedWindow(self.tab_analyse, orient="horizontal")
@@ -593,8 +650,9 @@ class TradeHelperApp:
         paned.add(left, weight=3)
         right = ttk.Frame(paned, width=400)
         paned.add(right, weight=1)
-        ttk.Label(right, text="Avis de l'analyse (technique + fondamentale)",
-                  font=("TkDefaultFont", 10, "bold")).pack(anchor="w", padx=6, pady=(6, 2))
+        adv_lbl = ttk.Label(right, font=("TkDefaultFont", 10, "bold"))
+        self._set_text(adv_lbl, "advice_panel")
+        adv_lbl.pack(anchor="w", padx=6, pady=(6, 2))
         self.adv_text = scrolledtext.ScrolledText(right, wrap="word", width=50, height=32)
         self.adv_text.pack(fill="both", expand=True, padx=6, pady=4)
 
@@ -659,9 +717,12 @@ class TradeHelperApp:
 
     # ------------------------------------------------------------- onglet 2
     def _build_backtest_tab(self):
-        mid = ttk.LabelFrame(self.tab_backtest, text="Stratégie & paramètres de backtest")
+        mid = ttk.LabelFrame(self.tab_backtest)
+        self._set_text(mid, "bt_frame")
         mid.pack(fill="x", padx=6, pady=4)
-        ttk.Label(mid, text="Stratégie :").grid(row=0, column=0, sticky="w", padx=4, pady=4)
+        l0 = ttk.Label(mid)
+        self._set_text(l0, "strat_label")
+        l0.grid(row=0, column=0, sticky="w", padx=4, pady=4)
         self.bt_strat_var = tk.StringVar(value=list_strategies()[0]["key"])
         self.bt_strat_box = ttk.Combobox(mid, values=[s["key"] for s in list_strategies()],
                                          textvariable=self.bt_strat_var, state="readonly", width=18)
@@ -673,57 +734,67 @@ class TradeHelperApp:
         self.param_entries: dict[str, ttk.Entry] = {}
         self._rebuild_params(mid)
 
-        ttk.Label(mid, text="Capital initial :").grid(row=2, column=0, sticky="w", padx=4, pady=4)
+        def fld(row, col, key):
+            lbl = ttk.Label(mid)
+            self._set_text(lbl, key)
+            lbl.grid(row=row, column=col, sticky="w", padx=4, pady=4)
+
+        fld(2, 0, "capital")
         self.bt_capital = ttk.Entry(mid, width=10)
         self.bt_capital.insert(0, "10000")
         self.bt_capital.grid(row=2, column=1, sticky="w")
-        ttk.Label(mid, text="Slippage (%) :").grid(row=2, column=2, sticky="w", padx=4)
+        fld(2, 2, "slippage")
         self.bt_slippage = ttk.Entry(mid, width=7)
         self.bt_slippage.insert(0, "0.05")
         self.bt_slippage.grid(row=2, column=3, sticky="w")
-        ttk.Label(mid, text="Sizing :").grid(row=2, column=4, sticky="w", padx=4)
+        fld(2, 4, "sizing")
         self.bt_sizing = ttk.Combobox(mid, values=["all_in", "risk"], state="readonly", width=10)
         self.bt_sizing.set("all_in")
         self.bt_sizing.grid(row=2, column=5, sticky="w")
-        ttk.Label(mid, text="Risque/trade (%) :").grid(row=3, column=0, sticky="w", padx=4, pady=4)
+        fld(3, 0, "risk_per_trade")
         self.bt_risk = ttk.Entry(mid, width=7)
         self.bt_risk.insert(0, "1.0")
         self.bt_risk.grid(row=3, column=1, sticky="w")
         self.bt_short = tk.BooleanVar(value=False)
-        ttk.Checkbutton(mid, text="Autoriser le short", variable=self.bt_short).grid(
-            row=3, column=2, sticky="w", padx=8)
+        self.chk_short = ttk.Checkbutton(mid, variable=self.bt_short)
+        self._set_text(self.chk_short, "allow_short")
+        self.chk_short.grid(row=3, column=2, sticky="w", padx=8)
 
-        ttk.Label(mid, text="Frais (préréglage) :").grid(row=4, column=0, sticky="w", padx=4, pady=4)
+        fld(4, 0, "fee_preset")
         self.bt_fee = ttk.Combobox(mid, values=list_presets(), state="readonly", width=26)
         self.bt_fee.set("trade_republic_fr_auto")  # défaut : Trade Republic FR
         self.bt_fee.grid(row=4, column=1, columnspan=2, sticky="w")
-        ttk.Label(mid, text="Frais fixe €/ordre (custom) :").grid(row=4, column=3, sticky="w", padx=4)
+        fld(4, 3, "fee_flat")
         self.bt_fee_flat = ttk.Entry(mid, width=7)
         self.bt_fee_flat.insert(0, "0")
         self.bt_fee_flat.grid(row=4, column=4, sticky="w")
-        ttk.Label(mid, text="Frais % (custom) :").grid(row=4, column=5, sticky="w", padx=4)
+        fld(4, 5, "fee_pct")
         self.bt_fee_pct = ttk.Entry(mid, width=7)
         self.bt_fee_pct.insert(0, "0")
         self.bt_fee_pct.grid(row=4, column=6, sticky="w")
 
-        ttk.Label(mid, text="Vol cible (%) :").grid(row=5, column=0, sticky="w", padx=4, pady=4)
+        fld(5, 0, "vol_target")
         self.bt_voltarget = ttk.Entry(mid, width=7)
         self.bt_voltarget.insert(0, "")
         self.bt_voltarget.grid(row=5, column=1, sticky="w")
-        ttk.Label(mid, text="Stop drawdown (%) :").grid(row=5, column=2, sticky="w", padx=4)
+        fld(5, 2, "dd_stop")
         self.bt_ddstop = ttk.Entry(mid, width=7)
         self.bt_ddstop.insert(0, "")
         self.bt_ddstop.grid(row=5, column=3, sticky="w")
-        ttk.Label(mid, text="Funding/barre (crypto) :").grid(row=5, column=4, sticky="w", padx=4)
+        fld(5, 4, "funding")
         self.bt_funding = ttk.Entry(mid, width=9)
         self.bt_funding.insert(0, "0")
         self.bt_funding.grid(row=5, column=5, sticky="w")
 
-        self.btn_bt = ttk.Button(mid, text="Backtest simple", command=self.on_backtest)
+        self.btn_bt = ttk.Button(mid, command=self.on_backtest)
+        self._set_text(self.btn_bt, "btn_backtest")
         self.btn_bt.grid(row=6, column=0, padx=4, pady=6)
-        ttk.Button(mid, text="Walk-forward", command=self.on_walkforward).grid(row=6, column=1, padx=4)
-        ttk.Button(mid, text="Grid search", command=self.on_gridsearch).grid(row=6, column=2, padx=4)
-        ttk.Button(mid, text="Monte Carlo", command=self.on_montecarlo).grid(row=6, column=3, padx=4)
+        for col, key, cmd in ((1, "btn_walkforward", self.on_walkforward),
+                              (2, "btn_gridsearch", self.on_gridsearch),
+                              (3, "btn_montecarlo", self.on_montecarlo)):
+            b = ttk.Button(mid, command=cmd)
+            self._set_text(b, key)
+            b.grid(row=6, column=col, padx=4)
 
         paned = ttk.PanedWindow(self.tab_backtest, orient="horizontal")
         paned.pack(fill="both", expand=True, padx=6, pady=4)
@@ -732,10 +803,14 @@ class TradeHelperApp:
         paned.add(left, weight=3)
         right = ttk.Frame(paned, width=460)
         paned.add(right, weight=1)
-        ttk.Label(right, text="Résultats du backtest").pack(anchor="w", padx=6)
+        lbr = ttk.Label(right)
+        self._set_text(lbr, "bt_results")
+        lbr.pack(anchor="w", padx=6)
         self.bt_metrics = scrolledtext.ScrolledText(right, wrap="word", width=56, height=12)
         self.bt_metrics.pack(fill="x", padx=6, pady=4)
-        ttk.Label(right, text="Trades").pack(anchor="w", padx=6)
+        lbt = ttk.Label(right)
+        self._set_text(lbt, "trades_label")
+        lbt.pack(anchor="w", padx=6)
         cols = ("entrée", "sortie", "sens", "pnl", "ret%", "barres", "raison")
         self.bt_tree = ttk.Treeview(right, columns=cols, show="headings", height=14)
         for c in cols:
@@ -988,24 +1063,34 @@ class TradeHelperApp:
     def _build_portfolio_tab(self):
         top = ttk.Frame(self.tab_portfolio)
         top.pack(fill="x", padx=6, pady=4)
-        ttk.Button(top, text="Liste par défaut (source active)",
-                   command=self._fill_pf_symbols).pack(side="left", padx=4)
-        ttk.Label(top, text="Stratégie :").pack(side="left", padx=(12, 2))
+        b_pf_fill = ttk.Button(top, command=self._fill_pf_symbols)
+        self._set_text(b_pf_fill, "btn_fill_pf")
+        b_pf_fill.pack(side="left", padx=4)
+        lps = ttk.Label(top)
+        self._set_text(lps, "strat_label")
+        lps.pack(side="left", padx=(12, 2))
         self.pf_strat = ttk.Combobox(top, values=[s["key"] for s in list_strategies()],
                                      state="readonly", width=18)
         self.pf_strat.set("ma_cross")
         self.pf_strat.pack(side="left")
-        ttk.Label(top, text="Frais :").pack(side="left", padx=(12, 2))
+        lpf = ttk.Label(top)
+        self._set_text(lpf, "pf_fee")
+        lpf.pack(side="left", padx=(12, 2))
         self.pf_fee = ttk.Combobox(top, values=list_presets(), state="readonly", width=24)
         self.pf_fee.set("trade_republic_fr_auto")
         self.pf_fee.pack(side="left")
-        ttk.Label(top, text="Capital :").pack(side="left", padx=(12, 2))
+        lpc = ttk.Label(top)
+        self._set_text(lpc, "pf_capital")
+        lpc.pack(side="left", padx=(12, 2))
         self.pf_capital = ttk.Entry(top, width=8)
         self.pf_capital.insert(0, "10000")
         self.pf_capital.pack(side="left")
-        self.btn_pf = ttk.Button(top, text="Backtester le portefeuille", command=self.on_portfolio)
+        self.btn_pf = ttk.Button(top, command=self.on_portfolio)
+        self._set_text(self.btn_pf, "btn_portfolio")
         self.btn_pf.pack(side="left", padx=12)
-        ttk.Label(self.tab_portfolio, text="Actifs du portefeuille (un par ligne) :").pack(anchor="w", padx=6)
+        lpa = ttk.Label(self.tab_portfolio)
+        self._set_text(lpa, "pf_actifs_label")
+        lpa.pack(anchor="w", padx=6)
         self.pf_text = scrolledtext.ScrolledText(self.tab_portfolio, height=4, width=70)
         self.pf_text.pack(anchor="w", padx=6, pady=2)
         self._fill_pf_symbols()
@@ -1082,37 +1167,45 @@ class TradeHelperApp:
     def _build_screener_tab(self):
         top = ttk.Frame(self.tab_screener)
         top.pack(fill="x", padx=6, pady=4)
-        ttk.Button(top, text="Remplir la liste par défaut (source active)",
-                   command=self._fill_symbols).pack(side="left", padx=4)
-        self.btn_scr = ttk.Button(top, text="Scanner (toutes les stratégies)", command=self.on_screener)
+        b_fill = ttk.Button(top, command=self._fill_symbols)
+        self._set_text(b_fill, "btn_fill_default")
+        b_fill.pack(side="left", padx=4)
+        self.btn_scr = ttk.Button(top, command=self.on_screener)
+        self._set_text(self.btn_scr, "btn_screener")
         self.btn_scr.pack(side="left", padx=8)
-        ttk.Button(top, text="Ouvrir la sélection dans l'onglet Analyse",
-                   command=self._open_screener_selection).pack(side="left", padx=4)
+        b_open = ttk.Button(top, command=self._open_screener_selection)
+        self._set_text(b_open, "btn_open_selection")
+        b_open.pack(side="left", padx=4)
         self.scr_progress = ttk.Label(top, text="")
         self.scr_progress.pack(side="left", padx=8)
-        self.advice_frame = ttk.LabelFrame(self.tab_screener,
-                                           text="Conseil du jour — quoi acheter aujourd'hui ?")
+        self.advice_frame = ttk.LabelFrame(self.tab_screener)
+        self._set_text(self.advice_frame, "advice_frame")
         self.advice_frame.pack(fill="x", padx=6, pady=4)
-        self.scr_advice_var = tk.StringVar(value="Lancez le screener pour obtenir un conseil d'achat.")
+        self.scr_advice_var = tk.StringVar(value=t("advice_wait", self.lang))
         ttk.Label(self.advice_frame, textvariable=self.scr_advice_var,
                   wraplength=1150, justify="left").pack(anchor="w", padx=6, pady=4)
-        ttk.Label(self.tab_screener,
-                  text="Symboles à scanner (un par ligne) — source, période et intervalle repris de la barre du haut :").pack(anchor="w", padx=6)
+        lbl_scr = ttk.Label(self.tab_screener)
+        self._set_text(lbl_scr, "screener_symbols_label")
+        lbl_scr.pack(anchor="w", padx=6)
         mid = ttk.Frame(self.tab_screener)
         mid.pack(fill="x", padx=6, pady=2)
         self.scr_text = scrolledtext.ScrolledText(mid, height=5, width=60)
         self.scr_text.pack(side="left", anchor="w")
         self._fill_symbols()
-        wf = ttk.LabelFrame(mid, text="Watchlist (persistante)")
+        wf = ttk.LabelFrame(mid)
+        self._set_text(wf, "watchlist_frame")
         wf.pack(side="left", fill="y", padx=(10, 0))
         self.watch_listbox = tk.Listbox(wf, height=5, width=24, exportselection=False)
         self.watch_listbox.pack(side="left", fill="both", expand=True, padx=4, pady=4)
         self.watch_listbox.bind("<Double-Button-1>", lambda _=None: self._watch_load())
         wbtns = ttk.Frame(wf)
         wbtns.pack(side="left", fill="y", padx=4, pady=4)
-        ttk.Button(wbtns, text="+ actif courant", command=self._watch_add_current).pack(fill="x", pady=1)
-        ttk.Button(wbtns, text="- retirer", command=self._watch_remove_selected).pack(fill="x", pady=1)
-        ttk.Button(wbtns, text="Charger", command=self._watch_load).pack(fill="x", pady=1)
+        for key, cmd in (("watch_add", self._watch_add_current),
+                         ("watch_remove", self._watch_remove_selected),
+                         ("watch_load", self._watch_load)):
+            b = ttk.Button(wbtns, command=cmd)
+            self._set_text(b, key)
+            b.pack(fill="x", pady=1)
         self._watch_refresh()
         cols = ("symbole", "type", "cours", "avis", "stratégie", "sharpe", "ret%", "trades",
                 "position", "horizon", "entrée", "stop", "objectif")

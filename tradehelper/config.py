@@ -32,6 +32,8 @@ DEFAULTS: dict = {
     "events_ttl_seconds": 24 * 3600,
     # backend de calcul : "auto" (CUDA si dispo) | "cpu" | "cuda" — env TRADEHELPER_BACKEND
     "compute_backend": "auto",
+    # langue de l'interface : "fr" (défaut) | "en" — env TRADEHELPER_LANG
+    "lang": "fr",
     # parallélisme du screener en mode CPU (processus) ; en mode CUDA, calcul GPU séquentiel
     "screener_workers": 0,  # 0 = auto (min(8, nb CPU))
 }
@@ -40,6 +42,7 @@ _ENV_MAP = {
     "TRADEHELPER_DB_PATH": ("db_path", str),
     "ALPHAVANTAGE_API_KEY": ("alphavantage_api_key", str),
     "TRADEHELPER_ADJUST_PRICES": ("adjust_prices", lambda v: v.lower() in ("1", "true", "oui")),
+    "TRADEHELPER_LANG": ("lang", str),
 }
 
 

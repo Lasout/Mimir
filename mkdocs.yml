@@ -1,0 +1,13 @@
+site_name: tradeHelper — guide utilisateur
+site_description: Outil d'aide au trading (swing/day) sur données ouvertes — backtests, screener, conseils.
+theme:
+  name: material
+  language: fr
+nav:
+  - Accueil: index.md
+  - Guide utilisateur: guide-utilisateur.md
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true

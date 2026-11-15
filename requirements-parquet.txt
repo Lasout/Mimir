@@ -1,0 +1,3 @@
+# Optionnel : accélère les lectures du store (cache Parquet read-through dans parquet/).
+# Sans pyarrow, le store retombe automatiquement sur SQLite (aucun changement requis).
+pyarrow>=18

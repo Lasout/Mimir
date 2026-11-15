@@ -108,6 +108,19 @@ def fundamental_analysis(symbol: str, source: str = "stock") -> dict:
         scores.append((0.05, _clip(upside * 3.0)))
         reasons.append(f"Objectif de cours moyen {target:.2f} ({upside * 100:+.1f} % vs cours actuel).")
 
+    # Composantes avancées (surprise de BPA, relatif secteur, sentiment news RSS) :
+    # mises en cache dans le store, jamais bloquantes en cas d'échec réseau.
+    try:
+        from .advanced import advanced_fundamental
+        adv = advanced_fundamental(symbol, source=source)
+        if adv.get("available"):
+            for w, s in adv["components"]:
+                scores.append((w, s))
+            reasons.extend(f"[Avancé] {r}" for r in adv["reasons"])
+            data.update(adv.get("data", {}))
+    except Exception:
+        pass
+
     if not scores:
         return {"available": False, "score": 0.0,
                 "reasons": ["Données fondamentales insuffisantes pour ce titre."], "data": data}

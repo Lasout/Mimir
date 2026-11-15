@@ -101,6 +101,8 @@ Outil d'aide au trading orienté **swing / day trading**, basé sur des **donné
 
 ```bash
 pip install --user -r requirements.txt   # pandas, numpy, matplotlib, yfinance, requests, pillow
+pip install --user -r requirements-parquet.txt   # optionnel : cache Parquet du store (pyarrow)
+pip install --user -r requirements-gpu.txt       # optionnel : mode calcul GPU CUDA (voir guide)
 ```
 
 ## Lancement
@@ -108,6 +110,10 @@ pip install --user -r requirements.txt   # pandas, numpy, matplotlib, yfinance, 
 ```bash
 python3 run.py
 ```
+
+📖 **Guide utilisateur complet** (tutoriel « premier backtest », onglets, raccourcis, watchlist,
+exports, thèmes, mode GPU) : [`docs/guide-utilisateur.md`](docs/guide-utilisateur.md)
+(publiable avec MkDocs via `mkdocs.yml`).
 
 ## Utilisation en ligne de commande (exemple)
 

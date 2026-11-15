@@ -1,0 +1,131 @@
+"""i18n minimal de l'interface : dictionnaire fr/en. **Français par défaut** (règle projet),
+anglais en option (config `lang` ou env `TRADEHELPER_LANG=fr|en`), persisté dans le store.
+"""
+
+from __future__ import annotations
+
+import os
+
+LANGS = ("fr", "en")
+
+STRINGS: dict[str, dict[str, str]] = {
+    "fr": {
+        "app_title": "tradeHelper — aide au trading (swing / day)",
+        "ctx_frame": "Instrument (commun à tous les onglets)",
+        "source": "Source :", "symbol": "Actif :", "period": "Période :",
+        "interval": "Intervalle :", "backend": "Calcul :",
+        "tab_analyse": "Analyse & conseils", "tab_backtest": "Backtest",
+        "tab_screener": "Screener multi-stratégies", "tab_portfolio": "Portefeuille multi-actifs",
+        "btn_analyse": "Charger & analyser l'actif",
+        "btn_backtest": "Backtest simple", "btn_walkforward": "Walk-forward",
+        "btn_gridsearch": "Grid search", "btn_montecarlo": "Monte Carlo",
+        "btn_screener": "Scanner (toutes les stratégies)",
+        "btn_fill_default": "Remplir la liste par défaut (source active)",
+        "btn_open_selection": "Ouvrir la sélection dans l'onglet Analyse",
+        "btn_fill_pf": "Liste par défaut (source active)",
+        "btn_portfolio": "Backtester le portefeuille",
+        "advice_frame": "Conseil du jour — quoi acheter aujourd'hui ?",
+        "advice_wait": "Lancez le screener pour obtenir un conseil d'achat.",
+        "screener_symbols_label": "Symboles à scanner (un par ligne) — source, période et intervalle repris de la barre du haut :",
+        "watchlist_frame": "Watchlist (persistante)",
+        "watch_add": "+ actif courant", "watch_remove": "- retirer", "watch_load": "Charger",
+        "menu_file": "Fichier", "menu_tabs": "Onglets", "menu_view": "Affichage", "menu_help": "Aide",
+        "menu_export_png": "Exporter le graphique en PNG",
+        "menu_export_screener": "Exporter le screener en CSV",
+        "menu_export_trades": "Exporter les trades du backtest en CSV",
+        "menu_export_report": "Exporter le rapport affiché en TXT",
+        "menu_history": "Historique des analyses",
+        "menu_quit": "Quitter",
+        "menu_dark": "Thème sombre",
+        "menu_font_up": "Agrandir le texte", "menu_font_down": "Réduire le texte",
+        "menu_lang": "Langue", "lang_fr": "Français", "lang_en": "English",
+        "menu_shortcuts": "Raccourcis clavier", "menu_about": "À propos",
+        "history_title": "Historique des analyses",
+        "history_clear": "Effacer l'historique", "close": "Fermer",
+        "shortcuts_title": "Raccourcis clavier",
+        "about_title": "À propos de tradeHelper",
+        "about_text": "tradeHelper — aide au trading (swing / day) : backtests, screener multi-stratégies,\n"
+                      "conseils techniques + fondamentaux, portefeuille multi-actifs.\n"
+                      "Données ouvertes : Yahoo Finance, Binance, BCE.\n\n"
+                      "Avertissement : outil éducatif, pas un conseil en investissement.",
+        "status_ready": "Prêt. Données ouvertes : Yahoo Finance, Binance, BCE.",
+        "bt_frame": "Stratégie & paramètres de backtest",
+        "strat_label": "Stratégie :", "capital": "Capital initial :", "slippage": "Slippage (%) :",
+        "sizing": "Sizing :", "risk_per_trade": "Risque/trade (%) :", "allow_short": "Autoriser le short",
+        "fee_preset": "Frais (préréglage) :", "fee_flat": "Frais fixe €/ordre (custom) :",
+        "fee_pct": "Frais % (custom) :", "vol_target": "Vol cible (%) :",
+        "dd_stop": "Stop drawdown (%) :", "funding": "Funding/barre (crypto) :",
+        "bt_results": "Résultats du backtest", "trades_label": "Trades",
+        "analyse_strat_label": "Stratégie affichée sur le graphique :",
+        "advice_panel": "Avis de l'analyse (technique + fondamentale)",
+        "pf_actifs_label": "Actifs du portefeuille (un par ligne) :",
+        "pf_fee": "Frais :", "pf_capital": "Capital :",
+    },
+    "en": {
+        "app_title": "tradeHelper — trading assistant (swing / day)",
+        "ctx_frame": "Instrument (shared by all tabs)",
+        "source": "Source:", "symbol": "Symbol:", "period": "Period:",
+        "interval": "Interval:", "backend": "Compute:",
+        "tab_analyse": "Analysis & advice", "tab_backtest": "Backtest",
+        "tab_screener": "Multi-strategy screener", "tab_portfolio": "Multi-asset portfolio",
+        "btn_analyse": "Load & analyze symbol",
+        "btn_backtest": "Simple backtest", "btn_walkforward": "Walk-forward",
+        "btn_gridsearch": "Grid search", "btn_montecarlo": "Monte Carlo",
+        "btn_screener": "Scan (all strategies)",
+        "btn_fill_default": "Fill default list (active source)",
+        "btn_open_selection": "Open selection in Analysis tab",
+        "btn_fill_pf": "Default list (active source)",
+        "btn_portfolio": "Backtest portfolio",
+        "advice_frame": "Tip of the day — what to buy today?",
+        "advice_wait": "Run the screener to get a buy tip.",
+        "screener_symbols_label": "Symbols to scan (one per line) — source, period and interval from the top bar:",
+        "watchlist_frame": "Watchlist (persistent)",
+        "watch_add": "+ current symbol", "watch_remove": "- remove", "watch_load": "Load",
+        "menu_file": "File", "menu_tabs": "Tabs", "menu_view": "View", "menu_help": "Help",
+        "menu_export_png": "Export chart as PNG",
+        "menu_export_screener": "Export screener as CSV",
+        "menu_export_trades": "Export backtest trades as CSV",
+        "menu_export_report": "Export displayed report as TXT",
+        "menu_history": "Analysis history",
+        "menu_quit": "Quit",
+        "menu_dark": "Dark theme",
+        "menu_font_up": "Increase text size", "menu_font_down": "Decrease text size",
+        "menu_lang": "Language", "lang_fr": "Français", "lang_en": "English",
+        "menu_shortcuts": "Keyboard shortcuts", "menu_about": "About",
+        "history_title": "Analysis history",
+        "history_clear": "Clear history", "close": "Close",
+        "shortcuts_title": "Keyboard shortcuts",
+        "about_title": "About tradeHelper",
+        "about_text": "tradeHelper — trading assistant (swing / day): backtests, multi-strategy screener,\n"
+                      "technical + fundamental advice, multi-asset portfolio.\n"
+                      "Open data: Yahoo Finance, Binance, ECB.\n\n"
+                      "Disclaimer: educational tool, not investment advice.",
+        "status_ready": "Ready. Open data: Yahoo Finance, Binance, ECB.",
+        "bt_frame": "Strategy & backtest settings",
+        "strat_label": "Strategy:", "capital": "Initial capital:", "slippage": "Slippage (%):",
+        "sizing": "Sizing:", "risk_per_trade": "Risk/trade (%):", "allow_short": "Allow short",
+        "fee_preset": "Fees (preset):", "fee_flat": "Flat fee €/order (custom):",
+        "fee_pct": "Fee % (custom):", "vol_target": "Vol target (%):",
+        "dd_stop": "Drawdown stop (%):", "funding": "Funding/bar (crypto):",
+        "bt_results": "Backtest results", "trades_label": "Trades",
+        "analyse_strat_label": "Strategy shown on chart:",
+        "advice_panel": "Analysis advice (technical + fundamental)",
+        "pf_actifs_label": "Portfolio assets (one per line):",
+        "pf_fee": "Fees:", "pf_capital": "Capital:",
+    },
+}
+
+
+def get_lang(cfg: dict | None = None) -> str:
+    """Langue active : env TRADEHELPER_LANG > config `lang` > 'fr'."""
+    env = os.environ.get("TRADEHELPER_LANG")
+    if env and env.lower() in LANGS:
+        return env.lower()
+    if cfg and cfg.get("lang") in LANGS:
+        return cfg["lang"]
+    return "fr"
+
+
+def t(key: str, lang: str | None = None) -> str:
+    lang = lang if lang in LANGS else get_lang()
+    return STRINGS.get(lang, {}).get(key) or STRINGS["fr"].get(key) or key

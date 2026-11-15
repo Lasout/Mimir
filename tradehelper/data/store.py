@@ -58,9 +58,48 @@ class Store:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._conn = sqlite3.connect(str(self.path), check_same_thread=False)
+        self._pq: bool | None = None  # pyarrow disponible ?
         with self._lock:
             self._conn.executescript(SCHEMA)
             self._conn.commit()
+
+    # ------------------------------------------------------------- cache Parquet
+    def _parquet_ok(self) -> bool:
+        if self._pq is None:
+            try:
+                import pyarrow  # noqa: F401
+                self._pq = True
+            except Exception:
+                self._pq = False
+        return self._pq
+
+    def _pq_path(self, source: str, symbol: str, interval: str) -> Path:
+        return self.path.parent / "parquet" / f"{source}_{symbol.upper()}_{interval}.parquet"
+
+    def _write_parquet(self, df: pd.DataFrame, source: str, symbol: str, interval: str) -> None:
+        """Snapshot Parquet (lecture columnar rapide). Best effort : silencieux si échec."""
+        if not self._parquet_ok() or df.empty:
+            return
+        try:
+            out = df.copy()
+            out.index = pd.to_datetime(out.index)
+            out.index.name = "ts"
+            p = self._pq_path(source, symbol, interval)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            out.reset_index().to_parquet(p, index=False)
+        except Exception:
+            pass
+
+    def _read_parquet(self, source: str, symbol: str, interval: str) -> pd.DataFrame | None:
+        if not self._parquet_ok():
+            return None
+        p = self._pq_path(source, symbol, interval)
+        if not p.exists():
+            return None
+        try:
+            return pd.read_parquet(p)
+        except Exception:
+            return None
 
     # ------------------------------------------------------------- écriture
     def upsert(self, df: pd.DataFrame, source: str, symbol: str, interval: str) -> int:
@@ -82,25 +121,37 @@ class Store:
                 "INSERT OR REPLACE INTO bars (source, symbol, interval, ts, open, high, low, close, volume)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
             self._conn.commit()
+        self._write_parquet(df, source, symbol, interval)
         return len(rows)
 
     # ------------------------------------------------------------- lecture
     def read(self, source: str, symbol: str, interval: str,
              start: pd.Timestamp | None = None, end: pd.Timestamp | None = None) -> pd.DataFrame:
-        q = "SELECT ts, open, high, low, close, volume FROM bars WHERE source=? AND symbol=? AND interval=?"
-        args: list = [source, symbol.upper(), interval]
+        # cache Parquet d'abord (lecture columnar) ; SQLite sinon (source de vérité)
+        df = self._read_parquet(source, symbol, interval)
+        if df is None:
+            q = "SELECT ts, open, high, low, close, volume FROM bars WHERE source=? AND symbol=? AND interval=?"
+            args: list = [source, symbol.upper(), interval]
+            if start is not None:
+                q += " AND ts >= ?"
+                args.append(pd.Timestamp(start).strftime("%Y-%m-%d %H:%M:%S"))
+            if end is not None:
+                q += " AND ts <= ?"
+                args.append(pd.Timestamp(end).strftime("%Y-%m-%d %H:%M:%S"))
+            q += " ORDER BY ts"
+            with self._lock:
+                df = pd.read_sql_query(q, self._conn, params=args, parse_dates=["ts"])
+        if df is None or df.empty:
+            return pd.DataFrame(columns=COLUMNS)
+        df = df.copy()
+        df["ts"] = pd.to_datetime(df["ts"])
         if start is not None:
-            q += " AND ts >= ?"
-            args.append(pd.Timestamp(start).strftime("%Y-%m-%d %H:%M:%S"))
+            df = df[df["ts"] >= pd.Timestamp(start)]
         if end is not None:
-            q += " AND ts <= ?"
-            args.append(pd.Timestamp(end).strftime("%Y-%m-%d %H:%M:%S"))
-        q += " ORDER BY ts"
-        with self._lock:
-            df = pd.read_sql_query(q, self._conn, params=args, parse_dates=["ts"])
+            df = df[df["ts"] <= pd.Timestamp(end)]
         if df.empty:
             return pd.DataFrame(columns=COLUMNS)
-        df = df.set_index("ts")
+        df = df.sort_values("ts").set_index("ts")
         df.columns = COLUMNS
         df.index.name = None
         return df

@@ -79,10 +79,12 @@ Contexte projet pour agents : voir [`AGENTS.md`](AGENTS.md).
       manuelle, mode paper par défaut). Ne jamais exécuter d'ordres réels sans validation explicite
 - [ ] Journal de trading (notes, screenshots, raisons d'entrée/sortie)
 
-## P4 — analyse & UI/UX
+## P4 — analyse & UI/UX (fait)
 
-- [ ] Fondamental avancé : scoring sectoriel relatif, surprise de BPA, sentiment news
-      (RSS / API gratuite), données alternatives
+- [x] **Fondamental avancé** (`analysis/advanced.py`, fetchers injectables + cache store) :
+      **surprise de BPA** (yfinance `get_earnings_dates`, (publié−consensus)/|consensus|),
+      **valorisation relative au secteur** (médianes PER/marges de 8 pairs de même secteur),
+      **sentiment news** (flux RSS Yahoo, lexique fr/en) — fondu dans le score fondamental
 - [x] **Watchlist persistante** (table SQLite `watchlist`, panneau dans l'onglet Screener :
       ajouter l'actif courant / retirer / charger) + **historique des runs** (table
       `runs` : screener/backtest/portefeuille loggés avec métriques, dialog Ctrl+H)
@@ -92,11 +94,16 @@ Contexte projet pour agents : voir [`AGENTS.md`](AGENTS.md).
       (`PriceCrosshair` dans `gui/chart.py`, sans dépendance externe) ; **thème sombre**
       (Ctrl+D, persisté, ttk clam + rcParams matplotlib) ; zoom de police (Ctrl++/Ctrl+-)
 - [x] **Accessibilité clavier & raccourcis** : menubar (Fichier/Onglets/Affichage/Aide),
-      Ctrl+1..4, Ctrl+R/B/S, Ctrl+H, F1 (dialog d'aide), infobulles sur les boutons ;
-      UI en français (i18n fr/en non fait)
-- [ ] Performance : screener parallélisé (process pool — déjà en place depuis P2),
-      chargement lazy, cache Parquet
-- [ ] Documentation utilisateur (MkDocs/Sphinx) + tutoriel « premier backtest »
+      Ctrl+1..4, Ctrl+R/B/S, Ctrl+H, F1 (dialog d'aide), infobulles sur les boutons
+- [x] **i18n fr/en** (`gui/i18n.py`, défaut **fr** — règle projet ; `TRADEHELPER_LANG` ou
+      menu Affichage, switch à chaud + persisté `ui.lang`)
+- [x] **Barre de progression** pendant tous les calculs (déterminée x/N pour le screener,
+      indéterminée animée sinon)
+- [x] **Performance** : screener parallélisé (pool de processus, P2), **chargement lazy**
+      (mémo LRU des DataFrames indicateurs dans la GUI), **cache Parquet** read-through
+      dans le store (`parquet/` à côté du .db, si pyarrow installé, repli SQLite sinon)
+- [x] **Documentation utilisateur** : `docs/guide-utilisateur.md` + `mkdocs.yml`
+      (tutoriel « premier backtest », onglets, raccourcis, GPU, config)
 
 ## P5 — qualité & distribution
 

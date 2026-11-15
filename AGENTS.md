@@ -30,7 +30,8 @@ tradehelper/
 │   │                         #   tables bars + meta (upsert incrémental, thread-safe)
 │   │                         #   + watchlist (actifs suivis) + runs (historique des
 │   │                         #   analyses) ; meta sert aussi aux prefs UI (ui.theme,
-│   │                         #   ui.font_scale)
+│   │                         #   ui.font_scale, ui.lang) ; cache Parquet read-through
+│   │                         #   dans parquet/ à côté du .db (si pyarrow, sinon SQLite)
 │   ├── providers.py          # chaîne de fournisseurs : Yahoo, Binance (paginé 1000/appel),
 │   │                         #   Frankfurter (forex daily), Alpha Vantage (si clé env)
 │   ├── sources.py            # load_data(...) : sert depuis le store, ne télécharge que les
@@ -53,7 +54,14 @@ tradehelper/
 │   ├── walkforward.py        # walk_forward : OOS chaîné + rapport vs in-sample
 │   ├── montecarlo.py         # bootstrap des rendements des trades (proba de profit, percentiles)
 │   └── portfolio.py          # run_portfolio : multi-actifs, parts égales, corrélation
-├── analysis/                 # technical.py (score -1..1) + fundamental.py (info yfinance)
+├── analysis/
+│   ├── technical.py          # score technique -1..1 (tendance, momentum, volatilité)
+│   ├── fundamental.py        # info yfinance (PER vs secteur, PEG, marges, dette, avis...)
+│   │                         #   + intègre advanced.py (composantes pondérées, non bloquantes)
+│   └── advanced.py           # fondamental avancé : surprise de BPA (earnings_dates),
+│                             #   valorisation relative au secteur (médianes de pairs),
+│                             #   sentiment news RSS (lexique fr/en) — fetchers injectables,
+│                             #   résultats cachés dans le store (TTL 6–24 h)
 ├── advice.py                 # avis combiné 65 % tech / 35 % fond -> label + raisons + stop + earnings
 ├── screener.py               # screen_assets(backend=...) : backteste TOUTES les stratégies par
 │                             #   actif ; recommande position + horizon + entrée/stop/objectif ;
@@ -69,6 +77,8 @@ tradehelper/
     │                         #   persistante (onglet Screener), historique des runs (Ctrl+H)
     ├── theme.py              # palettes clair/sombre (ttk clam + rcParams matplotlib) + zoom
     │                         #   police ; partie pure testée hors-ligne (tests/test_theme.py)
+    ├── i18n.py               # dictionnaire fr/en (fr par défaut — règle projet), get_lang()
+    │                         #   (env TRADEHELPER_LANG), switch à chaud via set_language()
     ├── export.py             # exports PNG (Figure) / CSV (screener, trades) / TXT — fonctions pures
     └── chart.py              # chandeliers matplotlib + indicateurs + courbe d'equity +
                               #   PriceCrosshair (réticule + infobulle OHLC au survol)
@@ -98,9 +108,10 @@ tests/                        # unittest, données synthétiques (tests/helpers.
 ```bash
 pip install --user -r requirements.txt     # pandas numpy matplotlib yfinance requests pillow
 python3 run.py                              # lancer la GUI (nécessite un display X)
-python3 -m unittest discover -s tests -v   # tests (124 tests, hors-ligne, sans display :
+python3 -m unittest discover -s tests -v   # tests (143 tests, hors-ligne, sans display :
                                             #   la GUI Tk n'est testée que par les scripts de
                                             #   fumée manuels, pas par la suite unitaire)
+# doc utilisateur : docs/guide-utilisateur.md (mkdocs.yml pour publication)
 ```
 
 ## État actuel / limites connues
@@ -111,8 +122,10 @@ python3 -m unittest discover -s tests -v   # tests (124 tests, hors-ligne, sans 
   paginé, ex. BTCUSDT depuis 2017). **Intraday long indisponible** : Yahoo limite
   (1m = 7 j, 5m = 60 j, 1h = 730 j max). Stooq inutilisable (challenge JS anti-bot).
 - Screener : une stratégie "best" choisie par Sharpe (repli rendement si < 2 trades).
-- UI : thème clair/sombre + taille de police persistés dans `meta` ; watchlist et
-  historique des runs dans le store SQLite. Pas encore d'alertes ni de CI.
+- UI : thème clair/sombre + taille de police + langue (fr/en, fr par défaut) persistés dans
+  `meta` ; watchlist et historique des runs dans le store SQLite ; barre de progression
+  pendant les calculs ; chargement lazy (mémo LRU des indicateurs) + cache Parquet.
+  Pas encore d'alertes ni de CI.
 
 ## Dépôt git
 

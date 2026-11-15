@@ -88,6 +88,26 @@ class TestStore(unittest.TestCase):
         self.store = Store(Path(self.tmp.name) / "test.db")
         self.assertEqual([y for _, y, _ in self.store.watch_list()], ["BTCUSDT", "AAPL"])
 
+    def test_parquet_cache_roundtrip(self):
+        import importlib.util
+        if importlib.util.find_spec("pyarrow") is None:
+            self.skipTest("pyarrow non installé")
+        df = make_ohlcv(n=120)
+        self.store.upsert(df, "stock", "FAKE", "1d")
+        pq = self.store._pq_path("stock", "FAKE", "1d")
+        self.assertTrue(pq.exists(), "snapshot parquet non écrit")
+        out = self.store.read("stock", "FAKE", "1d")
+        self.assertEqual(len(out), 120)
+        self.assertAlmostEqual(float(out["Close"].iloc[-1]), float(df["Close"].iloc[-1]))
+        # filtre start/end aussi côté parquet
+        mid = df.index[60]
+        out2 = self.store.read("stock", "FAKE", "1d", start=mid)
+        self.assertEqual(len(out2), 60)
+        # repli SQLite si le parquet est supprimé
+        pq.unlink()
+        out3 = self.store.read("stock", "FAKE", "1d")
+        self.assertEqual(len(out3), 120)
+
     def test_runs_history(self):
         self.assertEqual(self.store.list_runs(), [])
         id1 = self.store.log_run("backtest", "aapl", "ma_cross : 12 trades", {"metrics": {"sharpe": 1.2}})
