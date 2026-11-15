@@ -170,8 +170,9 @@ python3 -m mypy                             # typage strict du cœur (pyproject.
 ## Dépôt git
 
 Dépôt initialisé à la racine du projet (branche `main`), remote `origin` =
-`git@github.com:Lasout/Mimir.git` (repo privé). Ne push sur aucun remote ni aucun tag
-`v*` sans autorisation explicite (le tag déclenche la release PyInstaller). Push initial :
-`git push -u origin main` depuis une machine avec credentials GitHub.
+`https://github.com/Lasout/Mimir.git` (repo **public**, licence MIT, `main` protégée :
+PR + checks CI requis). Ne push/merge sur `main` ni aucun tag `v*` sans autorisation
+explicite (le tag déclenche la release PyInstaller). `gh` est authentifié dans le sandbox
+(protocole HTTPS) : `git push` fonctionne via le credential helper gh.
 CI/CD actif (`.github/workflows/`) ; évolutions prévues dans ROADMAP.md.
 Protection de `main` (require PR + checks CI) à activer dans les settings GitHub.

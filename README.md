@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/Lasout/Mimir/actions/workflows/ci.yml/badge.svg)](https://github.com/Lasout/Mimir/actions/workflows/ci.yml)
 [![Release](https://github.com/Lasout/Mimir/actions/workflows/release.yml/badge.svg)](https://github.com/Lasout/Mimir/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Lasout/Mimir/blob/main/LICENSE)
 
 > Pour les agents qui reprennent le projet : lire d'abord [`AGENTS.md`](AGENTS.md)
 > (architecture, règles, commandes). La feuille de route est dans [`ROADMAP.md`](ROADMAP.md).
@@ -202,3 +203,9 @@ tradeHelper/
 Cet outil est fourni à titre **éducatif et d'aide à la décision** uniquement. Il ne constitue
 pas un conseil en investissement. Les backtests passés ne préjugent pas des performances
 futures ; le trading comporte un risque de perte en capital.
+
+## Licence
+
+[MIT](LICENSE) — utilisation, copie, modification, distribution et fork libres, à condition
+de conserver la notice de copyright (l'origine doit être citée). Le logiciel est fourni
+« tel quel », sans aucune garantie.

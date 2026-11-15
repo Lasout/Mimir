@@ -6,11 +6,9 @@ Contexte projet pour agents : voir [`AGENTS.md`](AGENTS.md).
 ## P0 — fondations (fait)
 
 - [x] Dépôt git initialisé à la racine (`main`, commit initial, `.gitignore`)
-- [x] Remote GitHub privé ajouté : `origin` = `git@github.com:Lasout/Mimir.git`.
-      **Push sur autorisation uniquement** — depuis une machine avec des credentials GitHub :
-      `git push -u origin main` (le sandbox n'a pas de token gh/SSH GitHub).
-      Protection de `main` à activer côté GitHub : Settings → Branches → Add rule
-      (`main`, require PR + status checks CI + no force push)
+- [x] Remote GitHub ajouté et `main` pushé : `origin` = `https://github.com/Lasout/Mimir.git`
+      (dépôt **public**, licence MIT). `main` protégée côté GitHub (PR + checks requis).
+      **Ne push/merge sur `main` que sur autorisation.**
 - [x] CI/CD GitHub Actions (`.github/workflows/ci.yml`) : lint `ruff` (check + format),
       tests pytest + couverture sur chaque push/PR, matrice Python 3.11–3.15,
       mypy strict, gitleaks ; badges dans le README. `network.yml` (tests réseau, manuel),

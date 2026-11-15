@@ -4,6 +4,8 @@ Format [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions séman
 (MAJEUR.MINEUR.CORRECTIF). Les releases sont taguées `vX.Y.Z` sur GitHub (voir
 `.github/workflows/release.yml` : paquets PyInstaller multi-OS).
 
+Licence : [MIT](LICENSE) — réutilisation/fork libres avec citation de l'origine.
+
 ## [0.1.0] — 2026-11-15
 
 Première version fonctionnelle complète (P0–P5 de la roadmap).
