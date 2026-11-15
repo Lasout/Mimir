@@ -19,6 +19,8 @@ from matplotlib.figure import Figure
 from ..advice import advise
 from ..backtest import (grid_search, monte_carlo_trades, periods_per_year, run_backtest,
                         run_portfolio, walk_forward)
+from ..broker import BrokerError, get_broker
+from ..paper import PaperError, PaperPortfolio
 from ..compute import add_all_dispatch, backend_label, detect_backend
 from ..data.sources import SOURCE_LABELS, DataError, data_range, load_data
 from ..data.store import default_store
@@ -118,15 +120,18 @@ class TradeHelperApp:
         self.tab_backtest = ttk.Frame(self.notebook)
         self.tab_screener = ttk.Frame(self.notebook)
         self.tab_portfolio = ttk.Frame(self.notebook)
+        self.tab_paper = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_analyse, text=t("tab_analyse", self.lang))
         self.notebook.add(self.tab_backtest, text=t("tab_backtest", self.lang))
         self.notebook.add(self.tab_screener, text=t("tab_screener", self.lang))
         self.notebook.add(self.tab_portfolio, text=t("tab_portfolio", self.lang))
+        self.notebook.add(self.tab_paper, text=t("tab_paper", self.lang))
 
         self._build_analyse_tab()
         self._build_backtest_tab()
         self._build_screener_tab()
         self._build_portfolio_tab()
+        self._build_paper_tab()
 
         self._build_menu()
         self._bind_shortcuts()
@@ -335,7 +340,8 @@ class TradeHelperApp:
             except tk.TclError:
                 pass
         for tab, key in ((self.tab_analyse, "tab_analyse"), (self.tab_backtest, "tab_backtest"),
-                         (self.tab_screener, "tab_screener"), (self.tab_portfolio, "tab_portfolio")):
+                         (self.tab_screener, "tab_screener"), (self.tab_portfolio, "tab_portfolio"),
+                         (self.tab_paper, "tab_paper")):
             self.notebook.tab(tab, text=t(key, lang))
         self.root.title(t("app_title", lang))
         self.menubar.destroy()
@@ -404,7 +410,8 @@ class TradeHelperApp:
         for i, (tab, key) in enumerate([(self.tab_analyse, "tab_analyse"),
                                         (self.tab_backtest, "tab_backtest"),
                                         (self.tab_screener, "tab_screener"),
-                                        (self.tab_portfolio, "tab_portfolio")], start=1):
+                                        (self.tab_portfolio, "tab_portfolio"),
+                                        (self.tab_paper, "tab_paper")], start=1):
             m_onglets.add_command(label=t(key, lang), accelerator=f"Ctrl+{i}",
                                   command=lambda tt=tab: self.notebook.select(tt))
         m_onglets.add_separator()
@@ -437,7 +444,8 @@ class TradeHelperApp:
 
     def _bind_shortcuts(self):
         r = self.root
-        tabs = [self.tab_analyse, self.tab_backtest, self.tab_screener, self.tab_portfolio]
+        tabs = [self.tab_analyse, self.tab_backtest, self.tab_screener, self.tab_portfolio,
+                self.tab_paper]
         for i, tab in enumerate(tabs, start=1):
             r.bind_all(f"<Control-Key-{i}>", lambda _=None, t=tab: self.notebook.select(t))
         r.bind_all("<Control-r>", lambda _=None: self.on_analyse())
@@ -1168,6 +1176,253 @@ class TradeHelperApp:
 
         self._run_async(work, done)
 
+    # ------------------------------------------------------------- onglet 5 : paper & journal
+    def _build_paper_tab(self):
+        self.pf = PaperPortfolio(store=self.store) if self.store is not None else None
+        top = ttk.Frame(self.tab_paper)
+        top.pack(fill="x", padx=6, pady=4)
+        lcap = ttk.Label(top)
+        self._set_text(lcap, "paper_capital")
+        lcap.pack(side="left", padx=(0, 4))
+        self.paper_capital = ttk.Entry(top, width=9)
+        self.paper_capital.insert(0, "10000")
+        self.paper_capital.pack(side="left")
+        lmax = ttk.Label(top)
+        self._set_text(lmax, "paper_maxpos")
+        lmax.pack(side="left", padx=(10, 4))
+        self.paper_maxpos = ttk.Entry(top, width=5)
+        self.paper_maxpos.insert(0, "5")
+        self.paper_maxpos.pack(side="left")
+        lbrk = ttk.Label(top)
+        self._set_text(lbrk, "paper_broker")
+        lbrk.pack(side="left", padx=(10, 4))
+        self.paper_broker = ttk.Combobox(top, values=["paper", "ibkr"], state="readonly", width=8)
+        self.paper_broker.set("paper")
+        self.paper_broker.pack(side="left")
+        for key, cmd in (("paper_open", self._paper_open_current),
+                         ("paper_sync", self._paper_sync_screener),
+                         ("paper_close", self._paper_close_selected),
+                         ("paper_reset", self._paper_reset)):
+            b = ttk.Button(top, command=cmd)
+            self._set_text(b, key)
+            b.pack(side="left", padx=6)
+        self.paper_metrics_var = tk.StringVar(value="")
+        ttk.Label(self.tab_paper, textvariable=self.paper_metrics_var, style="Status.TLabel").pack(
+            anchor="w", padx=6)
+
+        paned = ttk.PanedWindow(self.tab_paper, orient="horizontal")
+        paned.pack(fill="both", expand=True, padx=6, pady=4)
+        left = ttk.Frame(paned)
+        paned.add(left, weight=3)
+        lp = ttk.Label(left)
+        self._set_text(lp, "paper_positions")
+        lp.pack(anchor="w")
+        cols = ("id", "symbole", "sens", "qté", "entrée", "stop", "objectif", "stratégie", "pnl_latent")
+        self.paper_tree = ttk.Treeview(left, columns=cols, show="headings", height=10)
+        for c, w in zip(cols, (40, 90, 55, 70, 80, 80, 80, 150, 90)):
+            self.paper_tree.heading(c, text=c)
+            self.paper_tree.column(c, width=w)
+        self.paper_tree.pack(fill="both", expand=True, pady=2)
+        self._make_sortable(self.paper_tree)
+        lt = ttk.Label(left)
+        self._set_text(lt, "paper_trades")
+        lt.pack(anchor="w", pady=(6, 0))
+        tcols = ("id", "symbole", "entrée", "sortie", "prix_sortie", "pnl", "raison")
+        self.trades_tree = ttk.Treeview(left, columns=tcols, show="headings", height=8)
+        for c, w in zip(tcols, (40, 90, 150, 150, 80, 80, 200)):
+            self.trades_tree.heading(c, text=c)
+            self.trades_tree.column(c, width=w)
+        self.trades_tree.pack(fill="both", expand=True, pady=2)
+        self._make_sortable(self.trades_tree)
+
+        right = ttk.Frame(paned, width=460)
+        paned.add(right, weight=2)
+        lj = ttk.Label(right)
+        self._set_text(lj, "paper_journal")
+        lj.pack(anchor="w")
+        jcols = ("date", "symbole", "type", "note")
+        self.journal_tree = ttk.Treeview(right, columns=jcols, show="headings", height=12)
+        for c, w in zip(jcols, (140, 80, 60, 160)):
+            self.journal_tree.heading(c, text=c)
+            self.journal_tree.column(c, width=w)
+        self.journal_tree.pack(fill="both", expand=True, pady=2)
+        form = ttk.Frame(right)
+        form.pack(fill="x", pady=4)
+        self.journal_symbol = ttk.Entry(form, width=10)
+        self.journal_kind = ttk.Combobox(form, values=["note", "entrée", "sortie", "idée"],
+                                         state="readonly", width=8)
+        self.journal_kind.set("note")
+        self.journal_text = ttk.Entry(form, width=34)
+        self.journal_image = ttk.Entry(form, width=20)
+        for i, key in enumerate(("journal_symbol", "journal_kind", "journal_text", "journal_image")):
+            ttk.Label(form, text=t(key, self.lang)).grid(row=0, column=2 * i, padx=(6, 2))
+        self.journal_symbol.grid(row=1, column=0, padx=2, pady=2)
+        self.journal_kind.grid(row=1, column=2, padx=2, pady=2)
+        self.journal_text.grid(row=1, column=4, padx=2, pady=2)
+        self.journal_image.grid(row=1, column=6, padx=2, pady=2)
+        jbtns = ttk.Frame(right)
+        jbtns.pack(fill="x")
+        b_add = ttk.Button(jbtns, command=self._journal_add)
+        self._set_text(b_add, "journal_add")
+        b_add.pack(side="left", padx=2)
+        b_del = ttk.Button(jbtns, command=self._journal_delete_selected)
+        self._set_text(b_del, "journal_delete")
+        b_del.pack(side="left", padx=2)
+        self._paper_refresh()
+        self._journal_refresh()
+
+    def _paper_refresh(self):
+        if self.pf is None:
+            self.paper_metrics_var.set("Paper désactivé (store indisponible).")
+            return
+        prices = {s: float(r["last_close"]) for s, r in self.screener_rows.items()
+                  if isinstance(r.get("last_close"), (int, float))}
+        st = self.pf.stats(prices)
+        for tree in (self.paper_tree, self.trades_tree):
+            for i in tree.get_children():
+                tree.delete(i)
+        for p in self.pf.open_positions():
+            px = prices.get(p["symbol"], p["entry_price"])
+            latent = (px - p["entry_price"]) * p["qty"] if p["side"] == "long" \
+                else (p["entry_price"] - px) * p["qty"]
+            self.paper_tree.insert("", "end", values=(
+                p["id"], p["symbol"], p["side"], f"{p['qty']:.4f}", f"{p['entry_price']:.2f}",
+                f"{p['stop']:.2f}" if p["stop"] else "", f"{p['target']:.2f}" if p["target"] else "",
+                p["strategy"] or "", f"{latent:+.2f}"))
+        for t in self.pf.closed_trades():
+            self.trades_tree.insert("", "end", values=(
+                t["id"], t["symbol"], t["entry_time"], t["exit_time"],
+                f"{t['exit_price']:.2f}", f"{t['pnl']:+.2f}" if t["pnl"] is not None else "",
+                (t["exit_reason"] or "")[:40]))
+        wr = f"{st['win_rate'] * 100:.0f} %" if st["win_rate"] is not None else "-"
+        self.paper_metrics_var.set(
+            f"Trésorerie : {st['cash']:.2f}   Equity : {st['equity']:.2f}   "
+            f"P&L latent : {st['latent_pnl']:+.2f}   Rendement : {st['total_return'] * 100:+.2f} %   "
+            f"Positions ouvertes : {st['n_open']}   Trades clôturés : {st['n_closed']} (win rate {wr})   "
+            f"P&L réalisé : {st['realized_pnl']:+.2f}")
+
+    def _paper_open_current(self):
+        if self.pf is None:
+            return
+        if self.adv is None:
+            messagebox.showinfo("Paper", t("msg_analyse_first", self.lang))
+            return
+        vals = self._ctx_values(self.ctx)
+        try:
+            self.pf.max_positions = max(1, int(self.paper_maxpos.get() or 5))
+            pos = self.pf.open_position(
+                vals["symbol"], vals["source"], float(self.adv["last_close"]), side="long",
+                stop=self.adv.get("stop_suggestion"),
+                strategy=self.strat_var.get(), reason=f"manuel ({self.adv['label']})")
+            self._log_run("paper", vals["symbol"],
+                          f"ouverture {pos['qty']:.4f} @ {pos['entry_price']:.2f}, stop {pos['stop']}",
+                          {"side": "long", **{k: pos[k] for k in ("symbol", "qty", "entry_price", "stop", "target")}})
+            self.status.set(f"Paper : position ouverte sur {vals['symbol']} ({pos['qty']:.4f} @ {pos['entry_price']:.2f}).")
+        except PaperError as exc:
+            messagebox.showerror("Paper", str(exc))
+        self._paper_refresh()
+
+    def _paper_sync_screener(self):
+        if self.pf is None:
+            return
+        rows = list(self.screener_rows.values())
+        if not rows:
+            messagebox.showinfo("Paper", t("msg_scan_first", self.lang))
+            return
+        vals = self._ctx_values(self.ctx)
+        self._progress_begin()
+        self.status.set("Synchronisation du paper avec le scan...")
+
+        maxpos = max(1, int(self.paper_maxpos.get() or 5))  # lecture Tk : thread principal
+
+        def work():
+            self.pf.max_positions = maxpos
+            return self.pf.apply_screener(rows, source=vals["source"])
+
+        def done(result, err):
+            self._progress_end()
+            if err is not None:
+                messagebox.showerror("Paper", str(err))
+                return
+            n_open = len(result["opened"])
+            n_close = len(result["closed"])
+            self._log_run("paper", "multi",
+                          f"sync scan : {n_open} ouverture(s), {n_close} clôture(s)",
+                          {"opened": [p["symbol"] for p in result["opened"]],
+                           "closed": [{"symbol": p["symbol"], "pnl": p["pnl"], "reason": p["exit_reason"]}
+                                      for p in result["closed"]]})
+            self.status.set(f"Paper synchronisé : {n_open} ouverture(s), {n_close} clôture(s), "
+                            f"ignorés : {len(result['skipped'])}.")
+            self._paper_refresh()
+
+        self._run_async(work, done)
+
+    def _paper_close_selected(self):
+        if self.pf is None:
+            return
+        sel = self.paper_tree.selection()
+        if not sel:
+            self.status.set("Paper : sélectionnez une position ouverte.")
+            return
+        pid = int(self.paper_tree.item(sel[0])["values"][0])
+        sym = str(self.paper_tree.item(sel[0])["values"][1])
+        row = self.screener_rows.get(sym)
+        price = float(row["last_close"]) if row and isinstance(row.get("last_close"), (int, float)) else None
+        if price is None:
+            pos = next(p for p in self.pf.open_positions() if p["id"] == pid)
+            price = pos["entry_price"]
+        try:
+            closed = self.pf.close_position(pid, price, reason="clôture manuelle")
+            self._log_run("paper", sym, f"clôture @ {price:.2f}, P&L {closed['pnl']:+.2f}",
+                          {"symbol": sym, "exit_price": price, "pnl": closed["pnl"]})
+            self.status.set(f"Paper : {sym} clôturé à {price:.2f} (P&L {closed['pnl']:+.2f}).")
+        except PaperError as exc:
+            messagebox.showerror("Paper", str(exc))
+        self._paper_refresh()
+
+    def _paper_reset(self):
+        if self.pf is None:
+            return
+        try:
+            self.pf.initial_capital = float(self.paper_capital.get() or 10000)
+        except ValueError:
+            self.pf.initial_capital = 10_000.0
+        self.pf.reset()
+        self.status.set("Paper réinitialisé.")
+        self._paper_refresh()
+
+    def _journal_add(self):
+        if self.store is None:
+            return
+        text = self.journal_text.get().strip()
+        if not text:
+            return
+        sym = self.journal_symbol.get().strip().upper() or None
+        self.store.journal_add(sym, self.journal_kind.get(), text,
+                               self.journal_image.get().strip() or None)
+        self.journal_text.delete(0, "end")
+        self._journal_refresh()
+
+    def _journal_delete_selected(self):
+        if self.store is None:
+            return
+        sel = self.journal_tree.selection()
+        if not sel:
+            return
+        jid = int(self.journal_tree.item(sel[0])["tags"][0])
+        self.store.journal_delete(jid)
+        self._journal_refresh()
+
+    def _journal_refresh(self):
+        if self.store is None:
+            return
+        for i in self.journal_tree.get_children():
+            self.journal_tree.delete(i)
+        for e in self.store.journal_list(300):
+            note = e["text"] + (f"  [img: {e['image_path']}]" if e["image_path"] else "")
+            self.journal_tree.insert("", "end", tags=(e["id"],), values=(
+                e["created_at"], e["symbol"] or "", e["kind"], note[:120]))
+
     # ------------------------------------------------------------- onglet 3
     def _build_screener_tab(self):
         top = ttk.Frame(self.tab_screener)
@@ -1181,6 +1436,9 @@ class TradeHelperApp:
         b_open = ttk.Button(top, command=self._open_screener_selection)
         self._set_text(b_open, "btn_open_selection")
         b_open.pack(side="left", padx=4)
+        b_tp = ttk.Button(top, command=self._paper_sync_screener)
+        self._set_text(b_tp, "btn_screener_to_paper")
+        b_tp.pack(side="left", padx=4)
         self.scr_progress = ttk.Label(top, text="")
         self.scr_progress.pack(side="left", padx=8)
         self.advice_frame = ttk.LabelFrame(self.tab_screener)

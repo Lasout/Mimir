@@ -80,10 +80,22 @@ Contexte projet pour agents : voir [`AGENTS.md`](AGENTS.md).
 ## P3 — alertes, paper trading, exécution
 
 - [ ] Alertes sur signaux (Telegram/Discord via webhook, email) avec niveaux entrée/stop/objectif
-- [ ] **Paper trading** : portefeuille fictif persistant, suivi des recommandations du screener
-- [ ] Connexion broker (ex. IBKR API) — **avec garde-fous** (montants max, confirmation
-      manuelle, mode paper par défaut). Ne jamais exécuter d'ordres réels sans validation explicite
-- [ ] Journal de trading (notes, screenshots, raisons d'entrée/sortie)
+  — **exclues du périmètre demandé pour l'instant**
+- [x] **Paper trading** (`paper.py`, tables SQLite `paper_positions` + meta `paper.cash`) :
+      portefeuille fictif **persistant** (trésorerie + positions ouvertes survivent aux
+      redémarrages), frais via le modèle de frais actif (TR FR par défaut), ouverture
+      manuelle depuis l'avis (Ctrl+R) ou **synchronisation avec un scan** du screener
+      (`apply_screener` : ouvre sur signal ACHAT, clôture sur signal non-ACHAT / stop /
+      objectif touché, respecte `max_positions`) ; onglet dédié « Paper trading & journal »
+      (Ctrl+5) avec positions ouvertes, trades clôturés et métriques (equity, P&L latent/réalisé,
+      win rate)
+- [x] Connexion broker (`broker.py`) — **avec garde-fous** : `PaperBroker` par défaut
+      (refuse `dry_run=False`), `IBKRBroker` verrouillé tant que
+      `TRADEHELPER_ALLOW_LIVE_TRADING=1` + config `ibkr` complète + `ib_insync` installé +
+      confirmation explicite + plafond `max_order_notional`. Ne jamais exécuter d'ordres
+      réels sans validation explicite
+- [x] Journal de trading (table SQLite `journal` : symbole, type note/entrée/sortie/idée,
+      texte, capture d'écran) dans le même onglet, CRUD complet
 
 ## P4 — analyse & UI/UX (fait)
 

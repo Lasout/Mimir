@@ -47,6 +47,34 @@ CREATE TABLE IF NOT EXISTS runs (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_runs_created ON runs (created_at);
+CREATE TABLE IF NOT EXISTS paper_positions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol      TEXT NOT NULL,
+    source      TEXT NOT NULL,
+    side        TEXT NOT NULL,          -- "long" | "short"
+    qty         REAL NOT NULL,
+    entry_price REAL NOT NULL,
+    entry_time  TEXT NOT NULL,
+    stop        REAL,
+    target      REAL,
+    strategy    TEXT,
+    reason      TEXT,
+    status      TEXT NOT NULL DEFAULT 'open',  -- "open" | "closed"
+    exit_price  REAL,
+    exit_time   TEXT,
+    pnl         REAL,
+    exit_reason TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_paper_status ON paper_positions (status);
+CREATE TABLE IF NOT EXISTS journal (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at  TEXT NOT NULL,
+    symbol      TEXT,
+    kind        TEXT NOT NULL,          -- "note" | "entrée" | "sortie" | "idée"
+    text        TEXT NOT NULL,
+    image_path  TEXT                    -- capture d'écran éventuelle (PNG exporté)
+);
+CREATE INDEX IF NOT EXISTS idx_journal_created ON journal (created_at);
 """
 
 COLUMNS = ["Open", "High", "Low", "Close", "Volume"]
@@ -289,6 +317,77 @@ class Store:
             self._conn.execute("DELETE FROM runs")
             self._conn.commit()
         return int(n)
+
+    # ------------------------------------------------------------- paper trading
+    def paper_add(self, pos: dict) -> int:
+        from ..timeutil import utcnow_naive
+        pos = dict(pos)
+        pos.setdefault("entry_time", utcnow_naive().strftime("%Y-%m-%d %H:%M:%S"))
+        pos.setdefault("status", "open")
+        cols = ("symbol", "source", "side", "qty", "entry_price", "entry_time", "stop",
+                "target", "strategy", "reason", "status", "exit_price", "exit_time",
+                "pnl", "exit_reason")
+        with self._lock:
+            cur = self._conn.execute(
+                f"INSERT INTO paper_positions ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+                tuple(pos.get(c) for c in cols))
+            self._conn.commit()
+        return int(cur.lastrowid)
+
+    def paper_update(self, pid: int, **fields) -> None:
+        if not fields:
+            return
+        sets = ", ".join(f"{k}=?" for k in fields)
+        with self._lock:
+            self._conn.execute(f"UPDATE paper_positions SET {sets} WHERE id=?",
+                               (*fields.values(), pid))
+            self._conn.commit()
+
+    def paper_list(self, status: str | None = None) -> list[dict]:
+        q = ("SELECT id, symbol, source, side, qty, entry_price, entry_time, stop, target, "
+             "strategy, reason, status, exit_price, exit_time, pnl, exit_reason "
+             "FROM paper_positions")
+        args: tuple = ()
+        if status:
+            q += " WHERE status=?"
+            args = (status,)
+        q += " ORDER BY id"
+        with self._lock:
+            rows = self._conn.execute(q, args).fetchall()
+        keys = ("id", "symbol", "source", "side", "qty", "entry_price", "entry_time", "stop",
+                "target", "strategy", "reason", "status", "exit_price", "exit_time", "pnl",
+                "exit_reason")
+        return [dict(zip(keys, r)) for r in rows]
+
+    def paper_clear(self) -> int:
+        with self._lock:
+            n = self._conn.execute("SELECT COUNT(*) FROM paper_positions").fetchone()[0]
+            self._conn.execute("DELETE FROM paper_positions")
+            self._conn.commit()
+        return int(n)
+
+    # ------------------------------------------------------------- journal
+    def journal_add(self, symbol: str | None, kind: str, text: str, image_path: str | None = None) -> int:
+        from ..timeutil import utcnow_naive
+        with self._lock:
+            cur = self._conn.execute(
+                "INSERT INTO journal (created_at, symbol, kind, text, image_path) VALUES (?, ?, ?, ?, ?)",
+                (utcnow_naive().strftime("%Y-%m-%d %H:%M:%S"), symbol, kind, text, image_path))
+            self._conn.commit()
+        return int(cur.lastrowid)
+
+    def journal_list(self, limit: int = 200) -> list[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, created_at, symbol, kind, text, image_path FROM journal"
+                " ORDER BY created_at DESC, id DESC LIMIT ?", (int(limit),)).fetchall()
+        return [{"id": r[0], "created_at": r[1], "symbol": r[2], "kind": r[3],
+                 "text": r[4], "image_path": r[5]} for r in rows]
+
+    def journal_delete(self, jid: int) -> None:
+        with self._lock:
+            self._conn.execute("DELETE FROM journal WHERE id=?", (jid,))
+            self._conn.commit()
 
     def close(self) -> None:
         with self._lock:

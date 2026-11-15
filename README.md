@@ -72,9 +72,9 @@ Outil d'aide au trading orienté **swing / day trading**, basé sur des **donné
   **saisie libre possible** pour n'importe quel symbole. Changer de source met à jour
   la liste, l'actif par défaut et les intervalles disponibles.
 - **Un seul instrument pour toute l'app** : la barre du haut (source / actif / période /
-  intervalle) est **commune aux 3 onglets** — le backtest porte toujours sur l'actif
+  intervalle) est **commune aux onglets** — le backtest porte toujours sur l'actif
   sélectionné, quel que soit l'onglet d'où il est lancé.
-- **Interface graphique** (Tkinter + matplotlib) avec 4 onglets :
+- **Interface graphique** (Tkinter + matplotlib) avec 5 onglets :
   1. **Analyse & conseils** — graphique en chandeliers avec moyennes mobiles, Bollinger,
      RSI, MACD, volume, marqueurs d'achat/vente de la stratégie choisie + panneau d'avis.
      **Survol du graphique** : réticule + infobulle (date, OHLC, volume, RSI de la barre).
@@ -93,8 +93,17 @@ Outil d'aide au trading orienté **swing / day trading**, basé sur des **donné
      Une **watchlist persistante** (SQLite) permet de suivre ses actifs favoris.
   4. **Portefeuille multi-actifs** — backtest d'un panier (parts égales, matrice de
      corrélation, frais par exécution).
+  5. **Paper trading & journal** — portefeuille fictif **persistant** (SQLite) qui suit
+     les recommandations du screener : bouton « Sync paper avec ce scan » (ouvre sur les
+     signaux ACHAT, clôture sur stop / objectif / signal contraire, plafond de positions),
+     ouverture manuelle depuis l'avis de l'onglet Analyse, métriques (trésorerie, equity,
+     P&L latent/réalisé, win rate), clôture manuelle, reset. **Journal de trading**
+     (notes / entrées / sorties / idées, captures d'écran) dans le même onglet.
+     Exécution via **broker « paper » par défaut** ; un broker IBKR réel reste verrouillé
+     tant que `TRADEHELPER_ALLOW_LIVE_TRADING=1` + config `ibkr` + confirmation + plafond
+     `max_order_notional` ne sont pas réunis — aucun ordre réel sans validation explicite.
 - **UI/UX** : thème **clair / sombre** (persisté, Ctrl+D), zoom du texte (Ctrl++ / Ctrl+-),
-  **menubar** (Fichier / Onglets / Affichage / Aide), **raccourcis clavier** (Ctrl+1..4
+  **menubar** (Fichier / Onglets / Affichage / Aide), **raccourcis clavier** (Ctrl+1..5
   onglets, Ctrl+R analyse, Ctrl+B backtest, Ctrl+S screener, F1 aide), infobulles sur les
   boutons, barre de statut avec le backend de calcul actif (CPU / GPU CUDA) et une
   **barre de progression** pendant les calculs : graduée **par stratégie** pour le

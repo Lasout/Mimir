@@ -32,8 +32,10 @@ tradehelper/
 │   ├── store.py              # Store SQLite (~/.local/share/tradehelper/market.db) :
 │   │                         #   tables bars + meta (upsert incrémental, thread-safe)
 │   │                         #   + watchlist (actifs suivis) + runs (historique des
-│   │                         #   analyses) ; meta sert aussi aux prefs UI (ui.theme,
-│   │                         #   ui.font_scale, ui.lang) ; cache Parquet read-through
+│   │                         #   analyses) + paper_positions + journal (P3) ;
+│   │                         #   meta sert aussi aux prefs UI (ui.theme,
+│   │                         #   ui.font_scale, ui.lang) et à la trésorerie paper
+│   │                         #   (paper.cash) ; cache Parquet read-through
 │   │                         #   dans parquet/ à côté du .db (si pyarrow, sinon SQLite) :
 │   │                         #   snapshot COMPLET réécrit à chaque upsert + garde-fou de
 │   │                         #   comptage (snapshot < SQLite -> repli SQLite)
@@ -74,14 +76,24 @@ tradehelper/
 │                             #   actif ; recommande position + horizon + entrée/stop/objectif ;
 │                             #   backend cpu -> pool de processus, cuda -> indicateurs GPU + ML CUDA ;
 │                             #   top_pick() = conseil « quoi acheter aujourd'hui » (bandeau GUI)
+├── paper.py                  # PaperPortfolio (P3) : portefeuille fictif PERSISTANT (store),
+│                             #   open/close avec FeeModel, mark/stats, apply_screener (suit un
+│                             #   scan : ouvre sur ACHAT, clôture sur stop/objectif/signal)
+├── broker.py                 # brokers (P3) : PaperBroker (refuse dry_run=False) + IBKRBroker
+│                             #   verrouillé (env TRADEHELPER_ALLOW_LIVE_TRADING=1 + config +
+│                             #   confirmation + plafond max_order_notional) — aucun ordre réel
+│                             #   sans validation explicite
 └── gui/
-    ├── app.py                # Tkinter : 1 barre d'instrument GLOBALE partagée par les 4 onglets
-    │                         #   (Analyse / Backtest / Screener / Portefeuille) ; Treeviews triables ;
+    ├── app.py                # Tkinter : 1 barre d'instrument GLOBALE partagée par les 5 onglets
+    │                         #   (Analyse / Backtest / Screener / Portefeuille / Paper & journal) ;
+    │                         #   Treeviews triables ;
     │                         #   Backtest : sélecteur de frais (TR FR défaut), vol target, stop DD,
     │                         #   boutons Walk-forward / Grid search / Monte Carlo ; double-clic
     │                         #   screener -> charge actif + stratégie recommandée ;
-    │                         #   menubar + raccourcis (Ctrl+1..4/R/B/S/D/H/E, F1), watchlist
-    │                         #   persistante (onglet Screener), historique des runs (Ctrl+H)
+    │                         #   onglet Paper (Ctrl+5) : sync avec le scan, ouverture depuis l'avis,
+    │                         #   clôture manuelle, reset, journal ; menubar + raccourcis
+    │                         #   (Ctrl+1..5/R/B/S/D/H/E, F1), watchlist persistante (onglet
+    │                         #   Screener), historique des runs (Ctrl+H)
     ├── theme.py              # palettes clair/sombre (ttk clam + rcParams matplotlib) + zoom
     │                         #   police ; partie pure testée hors-ligne (tests/test_theme.py)
     ├── i18n.py               # dictionnaire fr/en (fr par défaut — règle projet), get_lang()
@@ -109,13 +121,16 @@ tests/                        # unittest, données synthétiques (tests/helpers.
    `normalize()` produit toujours Open/High/Low/Close/Volume, index DatetimeIndex trié naive.
    Ne jamais appeler les providers directement hors de `load_data` (sauf tests avec store temporaire).
 6. Avertissement « outil éducatif, pas un conseil en investissement » à maintenir (README).
+7. **Jamais d'ordres réels sans validation explicite** : le broker par défaut est `paper`
+   (`broker.py`) ; `IBKRBroker` exige `TRADEHELPER_ALLOW_LIVE_TRADING=1` + config complète +
+   `confirm=True` + notionnel ≤ `max_order_notional`.
 
 ## Commandes
 
 ```bash
 pip install --user -r requirements.txt     # pandas numpy matplotlib yfinance requests pillow
 python3 run.py                              # lancer la GUI (nécessite un display X)
-python3 -m unittest discover -s tests -v   # tests (158 tests, hors-ligne, sans display :
+python3 -m unittest discover -s tests -v   # tests (173 tests, hors-ligne, sans display :
                                             #   la GUI Tk n'est testée que par les scripts de
                                             #   fumée manuels, pas par la suite unitaire)
 # doc utilisateur : docs/guide-utilisateur.md (mkdocs.yml pour publication)
@@ -130,9 +145,9 @@ python3 -m unittest discover -s tests -v   # tests (158 tests, hors-ligne, sans 
   (1m = 7 j, 5m = 60 j, 1h = 730 j max). Stooq inutilisable (challenge JS anti-bot).
 - Screener : une stratégie "best" choisie par Sharpe (repli rendement si < 2 trades).
 - UI : thème clair/sombre + taille de police + langue (fr/en, fr par défaut) persistés dans
-  `meta` ; watchlist et historique des runs dans le store SQLite ; barre de progression
-  pendant les calculs ; chargement lazy (mémo LRU des indicateurs) + cache Parquet.
-  Pas encore d'alertes ni de CI.
+  `meta` ; watchlist, historique des runs, paper trading et journal dans le store SQLite ;
+  barre de progression pendant les calculs ; chargement lazy (mémo LRU des indicateurs) +
+  cache Parquet. Pas encore d'alertes ni de CI.
 
 ## Dépôt git
 

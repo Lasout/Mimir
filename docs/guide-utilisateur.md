@@ -10,7 +10,7 @@ pip install --user -r requirements.txt
 python3 run.py            # nécessite un affichage (X11/Wayland)
 ```
 
-## La barre d'instrument (en haut, commune aux 4 onglets)
+## La barre d'instrument (en haut, commune aux 5 onglets)
 
 | Champ | Rôle |
 |---|---|
@@ -64,6 +64,21 @@ aujourd'hui. La **liste par défaut** mélange actions et ETF.
 Backtest d'un panier (parts égales entre actifs en position, frais par exécution,
 matrice de corrélation, limite de corrélation optionnelle).
 
+## Onglet 5 — Paper trading & journal (Ctrl+5)
+
+- **Portefeuille fictif persistant** (SQLite) : capital initial, nombre max de positions,
+  frais réels (modèle de frais choisi, TR FR par défaut). Trésorerie, equity, P&L
+  latent/réalisé et win rate affichés en permanence.
+- **Sync avec le screener** (« Sync paper avec ce scan ») : ouvre une position sur chaque
+  ligne en position ACHAT, clôture celles dont le signal n'est plus ACHAT ou dont le stop /
+  l'objectif est touché.
+- **Ouvrir l'actif courant** : ouvre une position paper depuis l'avis de l'onglet Analyse
+  (après Ctrl+R). Clôture manuelle par sélection, reset complet.
+- **Journal de trading** : notes / entrées / sorties / idées avec symbole et capture
+  d'écran, persisté en SQLite.
+- **Broker** : « paper » par défaut (aucun ordre réel). Un broker IBKR réel reste
+  verrouillé sans `TRADEHELPER_ALLOW_LIVE_TRADING=1` + confirmation + plafond de notionnel.
+
 ## Exports & historique
 
 Menu **Fichier** : PNG du graphique actif (Ctrl+E), CSV du screener (Ctrl+Shift+S),
@@ -72,7 +87,7 @@ CSV des trades, TXT du rapport affiché, **historique des analyses** (Ctrl+H, st
 ## Affichage & accessibilité
 
 - **Thème sombre** (Ctrl+D) et zoom du texte (Ctrl++ / Ctrl+-), persistés.
-- **Raccourcis** : Ctrl+1..4 (onglets), Ctrl+R/B/S (actions), Ctrl+H (historique),
+- **Raccourcis** : Ctrl+1..5 (onglets), Ctrl+R/B/S (actions), Ctrl+H (historique),
   F1 (aide), Ctrl+Q (quitter). Infobulles au survol des boutons.
 - **Langue** : Français (défaut) / English — menu Affichage, persisté
   (`TRADEHELPER_LANG=fr|en` au lancement).
