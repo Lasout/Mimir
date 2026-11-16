@@ -25,8 +25,9 @@ from ..data.store import default_store
 from ..data.universe import default_symbols, universe_for
 from ..fees import get_fee_model, list_presets
 from ..paper import PaperError, PaperPortfolio
+from ..paper_engine import Bar, PaperEngine, PaperEngineError
 from ..screener import screen_assets, top_pick
-from ..strategies import get_strategy, list_strategies
+from ..strategies import get_strategy, list_strategies, strategy_version
 from .chart import attach_price_crosshair, draw_equity_chart, draw_price_chart
 from .export import export_figure_png, export_screener_csv, export_text_report, export_trades_csv
 from .i18n import LANGS, get_lang, t
@@ -1286,6 +1287,7 @@ class TradeHelperApp:
     # ------------------------------------------------------------- onglet 5 : paper & journal
     def _build_paper_tab(self):
         self.pf = PaperPortfolio(store=self.store) if self.store is not None else None
+        self.engine = PaperEngine(store=self.store) if self.store is not None else None
         top = ttk.Frame(self.tab_paper)
         top.pack(fill="x", padx=6, pady=4)
         lcap = ttk.Label(top)
@@ -1375,8 +1377,33 @@ class TradeHelperApp:
         b_del = ttk.Button(jbtns, command=self._journal_delete_selected)
         self._set_text(b_del, "journal_delete")
         b_del.pack(side="left", padx=2)
+
+        # --- moteur conforme (SPEC §3.5 : fill open J+1, coûts, R-multiples) ---
+        eframe = ttk.LabelFrame(self.tab_paper)
+        self._set_text(eframe, "engine_title")
+        eframe.pack(fill="both", expand=False, padx=6, pady=4)
+        ebtns = ttk.Frame(eframe)
+        ebtns.pack(fill="x", padx=4, pady=2)
+        for key, cmd in (
+            ("engine_record", self._engine_record_signal),
+            ("engine_next", self._engine_next_day),
+            ("engine_dash", self._engine_dashboard),
+        ):
+            b = ttk.Button(ebtns, command=cmd)
+            self._set_text(b, key)
+            b.pack(side="left", padx=4)
+        self.engine_metrics_var = tk.StringVar(value="")
+        ttk.Label(eframe, textvariable=self.engine_metrics_var, style="Status.TLabel").pack(anchor="w", padx=6)
+        ecols = ("trade_id", "actif", "version", "signal", "fill", "sortie", "R_prev", "R_net", "raison")
+        self.engine_tree = ttk.Treeview(eframe, columns=ecols, show="headings", height=6)
+        for c, w in zip(ecols, (90, 70, 130, 90, 90, 90, 60, 60, 140), strict=True):
+            self.engine_tree.heading(c, text=c)
+            self.engine_tree.column(c, width=w)
+        self.engine_tree.pack(fill="both", expand=True, padx=6, pady=2)
+        self._make_sortable(self.engine_tree)
         self._paper_refresh()
         self._journal_refresh()
+        self._engine_refresh()
 
     def _paper_refresh(self):
         if self.pf is None:
@@ -1572,6 +1599,141 @@ class TradeHelperApp:
             note = e["text"] + (f"  [img: {e['image_path']}]" if e["image_path"] else "")
             self.journal_tree.insert(
                 "", "end", tags=(e["id"],), values=(e["created_at"], e["symbol"] or "", e["kind"], note[:120])
+            )
+
+    # ------------------------------------------- moteur paper conforme (SPEC §3.5)
+    def _engine_record_signal(self):
+        """Enregistre le conseil du jour J (données de J uniquement) — PAP-02/05."""
+        if self.engine is None:
+            return
+        if self.adv is None:
+            messagebox.showinfo("Paper", t("engine_need_adv", self.lang))
+            return
+        vals = self._ctx_values(self.ctx)
+        symbol = vals["symbol"].upper()
+        entry = float(self.adv["last_close"])
+        stop = float(self.adv.get("stop_suggestion") or entry * 0.98)
+        risk = entry - stop
+        target = entry + 2.5 * risk  # R:R 2,5 comme le screener
+        signal_date = str(pd.Timestamp(self.df.index[-1]).date())  # jour J = dernière barre chargée
+        ver = strategy_version(self.strat_var.get(), get_strategy(self.strat_var.get()).params)
+        try:
+            tr = self.engine.record_signal(
+                signal_date=signal_date,
+                asset=symbol,
+                source=vals["source"],
+                direction="long",
+                planned_entry=entry,
+                stop=stop,
+                target=target,
+                strategy_version=ver,
+                risk_pct=0.01,
+            )
+            self._log_run(
+                "paper_engine",
+                symbol,
+                f"signal J={signal_date} enregistré ({tr['trade_id']}, {ver}) — fill prévu au open de J+1",
+                {"trade_id": tr["trade_id"], "signal_date": signal_date, "version": ver},
+            )
+            self.status.set(f"Conseil du jour enregistré : {symbol} {signal_date} ({tr['trade_id']}).")
+        except PaperEngineError as exc:
+            messagebox.showerror("Paper", str(exc))
+        self._engine_refresh()
+
+    def _engine_next_day(self):
+        """Jour suivant : remplit les signaux en attente au open de J+1 (PAP-01) et
+        fait le suivi stop/cible des positions ouvertes (PAP-03)."""
+        if self.engine is None:
+            return
+        vals = self._ctx_values(self.ctx)
+        interval = vals["interval"]
+        events = []
+        for tr in self.engine.store.ptrade_list():
+            if tr["source"] != vals["source"]:
+                continue
+            ref = tr["fill_date"] or tr["signal_date"]
+            df = self.store.read(vals["source"], tr["asset"], interval, start=pd.Timestamp(ref) + pd.Timedelta(days=1))
+            if df.empty:
+                continue
+            row = df.iloc[0]
+            bar = Bar(
+                date=str(pd.Timestamp(df.index[0]).date()),
+                open=float(row["Open"]),
+                high=float(row["High"]),
+                low=float(row["Low"]),
+                close=float(row["Close"]),
+            )
+            if tr["status"] == "pending":
+                out = self.engine.fill_pending(tr["asset"], vals["source"], bar)
+                if out:
+                    events.append(f"{tr['asset']} rempli à {out['fill_price']:.2f} (open {bar.date})")
+            elif tr["status"] == "open":
+                closed = self.engine.on_bar(tr["asset"], vals["source"], bar)
+                for c in closed:
+                    events.append(
+                        f"{c['asset']} clôturé ({c['exit_reason']}) à {c['exit_price']:.2f}, "
+                        f"R net {c['r_realized']:+.2f}"
+                    )
+        if events:
+            self._log_run("paper_engine", "multi", "; ".join(events), {"events": events})
+            self.status.set(" | ".join(events[:3]))
+        else:
+            self.status.set("Aucune barre suivante disponible pour les signaux/positions en cours.")
+        self._engine_refresh()
+
+    def _engine_dashboard(self):
+        """Tableau de bord PAP-08 : trades clôturés uniquement, nets de coûts."""
+        if self.engine is None:
+            return
+        d = self.engine.dashboard()
+        bh = self.engine.benchmark_buy_hold()
+        parts = [
+            f"trades clôturés : {d['n_closed']} (ouverts {d['n_open']}, en attente {d['n_pending']})",
+            f"espérance : {d['expectancy_r']:+.3f} R" if d["expectancy_r"] is not None else "espérance : -",
+        ]
+        if d["expectancy_ic95"] is not None:
+            parts.append(
+                f"IC95 ±{d['expectancy_ic95']:.3f} (contient 0 = on ne sait rien)"
+                if abs(d["expectancy_r"]) <= d["expectancy_ic95"]
+                else f"IC95 ±{d['expectancy_ic95']:.3f}"
+            )
+        if d["win_rate"] is not None:
+            parts.append(
+                f"win rate {d['win_rate'] * 100:.0f} % / payoff {d['payoff']:.2f}"
+                if d["payoff"]
+                else f"win rate {d['win_rate'] * 100:.0f} %"
+            )
+        if d["breakeven_win_rate"] is not None:
+            parts.append(f"seuil équilibre {d['breakeven_win_rate'] * 100:.0f} %")
+        if d["max_drawdown_r"] is not None:
+            parts.append(f"max DD {d['max_drawdown_r']:+.2f} R / {d['max_drawdown_pct'] * 100:.1f} %")
+        if bh:
+            parts.append(
+                f"benchmark B&H mêmes actifs : {bh['mean_return'] * 100:+.1f} % ({bh['window'][0]} → {bh['window'][1]})"
+            )
+        self.engine_metrics_var.set("   |   ".join(parts))
+        self._engine_refresh()
+
+    def _engine_refresh(self):
+        if self.engine is None:
+            return
+        for i in self.engine_tree.get_children():
+            self.engine_tree.delete(i)
+        for tr in self.engine.store.ptrade_list():
+            self.engine_tree.insert(
+                "",
+                "end",
+                values=(
+                    tr["trade_id"],
+                    tr["asset"],
+                    tr["strategy_version"],
+                    tr["signal_date"],
+                    f"{tr['fill_price']:.2f} @ {tr['fill_date']}" if tr["fill_price"] else "—",
+                    f"{tr['exit_price']:.2f} @ {tr['exit_date']}" if tr["exit_price"] else "—",
+                    f"{tr['r_planned']:.2f}" if tr["r_planned"] is not None else "",
+                    f"{tr['r_realized']:+.2f}" if tr["r_realized"] is not None else "",
+                    tr["exit_reason"] or tr["status"],
+                ),
             )
 
     # ------------------------------------------------------------- onglet 3

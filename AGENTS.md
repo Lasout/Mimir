@@ -33,7 +33,8 @@ tradehelper/
 │   ├── store.py              # Store SQLite (~/.local/share/tradehelper/market.db) :
 │   │                         #   tables bars + meta (upsert incrémental, thread-safe)
 │   │                         #   + watchlist (actifs suivis) + runs (historique des
-│   │                         #   analyses) + paper_positions + journal (P3) ;
+│   │                         #   analyses) + paper_positions + journal (P3) + paper_trades
+│   │                         #   (moteur conforme P6.1, schéma PAP-07) ;
 │   │                         #   meta sert aussi aux prefs UI (ui.theme,
 │   │                         #   ui.font_scale, ui.lang) et à la trésorerie paper
 │   │                         #   (paper.cash) ; cache Parquet read-through
@@ -80,6 +81,12 @@ tradehelper/
 ├── paper.py                  # PaperPortfolio (P3) : portefeuille fictif PERSISTANT (store),
 │                             #   open/close avec FeeModel, mark/stats, apply_screener (suit un
 │                             #   scan : ouvre sur ACHAT, clôture sur stop/objectif/signal)
+├── paper_engine.py           # P6.1 (SPEC §3.5, PAP-xx) : moteur paper CONFORME — record_signal
+│                             #   idempotent (trade_id=hash(version,asset,date)), fill au OPEN de
+│                             #   J+1 + slippage (jamais au prix du signal), stop prioritaire,
+│                             #   R-multiples nets de frais/slippage, CostModel (frais AR >= 0,1 %,
+│                             #   slippage contre la position), dashboard + benchmark B&H ;
+│                             #   table `paper_trades` (schéma PAP-07), horloge réelle
 ├── broker.py                 # brokers (P3) : PaperBroker (refuse dry_run=False) + IBKRBroker
 │                             #   verrouillé (env TRADEHELPER_ALLOW_LIVE_TRADING=1 + config +
 │                             #   confirmation + plafond max_order_notional) — aucun ordre réel

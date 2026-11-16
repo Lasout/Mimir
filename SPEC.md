@@ -71,7 +71,7 @@ la partie prioritaire.
 ### 3.4 Interface — GUI (P4, fait)
 - GUI-01 5 onglets (Analyse / Backtest / Screener / Portefeuille / Paper & journal), raccourcis, menubar, i18n fr/en, thèmes, exports, watchlist, historique. **fait**
 
-### 3.5 Paper trading conforme — PAP (P6, à faire ; contenu historique de `cadsup.md` §2)
+### 3.5 Paper trading conforme — PAP (P6, **fait** : `tradehelper/paper_engine.py` + table `paper_trades` + tests `test_paper_engine.py` + section GUI « Moteur conforme »)
 
 **Principe** : un moteur d'exécution simulée qui traite chaque conseil du jour comme un
 ordre réel : remplissage au prochain prix disponible après le signal, frais et slippage
@@ -197,3 +197,4 @@ notionnel ne sont pas réunis.
 | 1.0.0 | 2026-11-15 | Cahier des charges initial (`cadsup.md`) : paper trading conforme + audit anti-biais + go/no-go. |
 | 1.1.0 | 2026-11-15 | Restructuration en SPEC global (IDs stables, statuts, priorités) ; `cadsup.md` intégré en §3.5–§3.8 et supprimé. |
 | 1.1.1 | 2026-11-15 | AUD-01 (look-ahead) et AUD-03 (cherry-picking) faits : `tests/test_antibias.py` ; correction du leak look-ahead dans `ml_signal`. |
+| 1.2.0 | 2026-11-16 | P6.1 fait : moteur paper conforme (PAP-01…08) — `paper_engine.py`, table `paper_trades`, dashboard + benchmark B&H, GUI. |

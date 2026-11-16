@@ -66,6 +66,35 @@ CREATE TABLE IF NOT EXISTS paper_positions (
     exit_reason TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_paper_status ON paper_positions (status);
+-- Moteur paper conforme (SPEC §3.5, PAP-07) : une ligne = un trade, du signal à la sortie.
+-- trade_id = hash(strategy_version, asset, signal_date) -> idempotence (PAP-05).
+CREATE TABLE IF NOT EXISTS paper_trades (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    trade_id         TEXT NOT NULL UNIQUE,
+    strategy_version TEXT NOT NULL,
+    signal_date      TEXT NOT NULL,           -- jour J de génération du conseil
+    asset            TEXT NOT NULL,
+    source           TEXT NOT NULL,
+    direction        TEXT NOT NULL,           -- "long" | "short"
+    planned_entry    REAL NOT NULL,
+    stop             REAL NOT NULL,
+    target           REAL NOT NULL,
+    risk_pct         REAL NOT NULL,           -- % du capital engagé sur le trade
+    fill_price       REAL,                    -- null tant que non rempli (fill = open J+1, PAP-01)
+    fill_date        TEXT,
+    exit_date        TEXT,
+    exit_price       REAL,
+    exit_reason      TEXT,                    -- stop | target | règle de sortie | fin de période
+    qty              REAL,
+    fees             REAL,                    -- cumul entrée+sortie (PAP-06)
+    slippage_cost    REAL,
+    pnl              REAL,                    -- net de frais et slippage, en monnaie
+    r_planned        REAL,
+    r_realized       REAL,                    -- null tant que ouvert
+    status           TEXT NOT NULL DEFAULT 'pending',  -- pending | open | closed
+    created_at       TEXT NOT NULL            -- horloge réelle (PAP-05)
+);
+CREATE INDEX IF NOT EXISTS idx_paper_trades_status ON paper_trades (status);
 CREATE TABLE IF NOT EXISTS journal (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at  TEXT NOT NULL,
@@ -432,6 +461,82 @@ class Store:
         with self._lock:
             n = self._conn.execute("SELECT COUNT(*) FROM paper_positions").fetchone()[0]
             self._conn.execute("DELETE FROM paper_positions")
+            self._conn.commit()
+        return int(n)
+
+    # ------------------------------------------- moteur paper conforme (paper_trades)
+    PTRADE_COLS = (
+        "trade_id",
+        "strategy_version",
+        "signal_date",
+        "asset",
+        "source",
+        "direction",
+        "planned_entry",
+        "stop",
+        "target",
+        "risk_pct",
+        "fill_price",
+        "fill_date",
+        "exit_date",
+        "exit_price",
+        "exit_reason",
+        "qty",
+        "fees",
+        "slippage_cost",
+        "pnl",
+        "r_planned",
+        "r_realized",
+        "status",
+        "created_at",
+    )
+
+    def ptrade_add(self, trade: dict) -> int:
+        from ..timeutil import utcnow_naive
+
+        trade = dict(trade)
+        trade.setdefault("created_at", utcnow_naive().strftime("%Y-%m-%d %H:%M:%S"))
+        trade.setdefault("status", "pending")
+        cols = self.PTRADE_COLS
+        with self._lock:
+            cur = self._conn.execute(
+                f"INSERT OR IGNORE INTO paper_trades ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+                tuple(trade.get(c) for c in cols),
+            )
+            self._conn.commit()
+        return int(cur.lastrowid)
+
+    def ptrade_get(self, trade_id: str) -> dict | None:
+        with self._lock:
+            row = self._conn.execute(
+                f"SELECT {', '.join(self.PTRADE_COLS)} FROM paper_trades WHERE trade_id=?",
+                (trade_id,),
+            ).fetchone()
+        return dict(zip(self.PTRADE_COLS, row, strict=True)) if row else None
+
+    def ptrade_update(self, trade_id: str, **fields) -> None:
+        if not fields:
+            return
+        sets = ", ".join(f"{k}=?" for k in fields)
+        with self._lock:
+            self._conn.execute(f"UPDATE paper_trades SET {sets} WHERE trade_id=?", (*fields.values(), trade_id))
+            self._conn.commit()
+
+    def ptrade_list(self, status: str | None = None) -> list[dict]:
+        q = f"SELECT {', '.join(self.PTRADE_COLS)} FROM paper_trades"
+        args: tuple = ()
+        if status:
+            q += " WHERE status=?"
+            args = (status,)
+        q += " ORDER BY signal_date, trade_id"
+        with self._lock:
+            rows = self._conn.execute(q, args).fetchall()
+        return [dict(zip(self.PTRADE_COLS, r, strict=True)) for r in rows]
+
+    def ptrade_clear(self) -> int:
+        with self._lock:
+            n = self._conn.execute("SELECT COUNT(*) FROM paper_trades").fetchone()[0]
+            self._conn.execute("DELETE FROM paper_trades")
             self._conn.commit()
         return int(n)
 

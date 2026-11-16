@@ -160,30 +160,35 @@ Spec de référence : [`SPEC.md`](SPEC.md) (moteur paper « comme un ordre réel
 anti-biais en tests automatisés + gouvernance + grille go/no-go capital réel).
 Légende : **(déjà en place)** = existe, à consolider ; le reste est à construire.
 
-### P6.1 — Moteur paper conforme SPEC §3.5 (PAP-xx) (remplissage J+1, coûts, R-multiples)
+### P6.1 — Moteur paper conforme SPEC §3.5 (PAP-xx) — fait
 
-- [ ] **Remplissage au open de J+1, jamais au prix du signal** : le conseil du screener est
-      produit à la clôture de J avec les données ≤ J ; le fill simulé se fait à l'open de
-      J+1 + slippage. *(Le backtest applique déjà « signal J → exécution open J+1 »
-      (test `test_no_lookahead_entry_next_bar`) ; le paper actuel remplit au prix courant
-      -> à refondre sur le même principe.)*
-- [ ] **Cycle quotidien idempotent** : rejouer le même jour ne crée pas de doublon
-      (clé `trade_id` = hash(strategy_version, asset, signal_date)) ; horodatage à
-      l'horloge réelle uniquement
-- [ ] **Convention stop prioritaire** si stop et cible sont touchés le même jour
-- [ ] **Journal par trade** conforme au schéma SPEC §3.5 PAP-07 : `trade_id`,
-      `strategy_version`, `signal_date`, `asset`, `direction`, `planned_entry`, `stop`,
-      `target`, `risk_pct`, `fill_price`, `fill_date`, `exit_*`, `fees`, `r_planned`,
-      `r_realized` (R = P&L / risque initial au stop, **net de frais et slippage**)
-      — migration de la table `paper_positions` actuelle
-- [ ] **Modèle de coûts non négociable** : frais aller-retour ≥ 0,1 % du notionnel
-      (configurable, min garde-fou), slippage fixe 0,05 %/côté ou basé sur la volatilité
-      récente, appliqué **contre** la position à l'entrée et à la sortie. Aucune métrique
-      de référence sans coûts (bouton « bruts » autorisé mais jamais affiché comme référence)
-- [ ] **Tableau de bord paper** (trades clôturés uniquement) : espérance en R (cible
-      +0,15R..+0,30R), win rate **et** payoff moyen ensemble, max drawdown en R et en %,
-      + benchmark **buy-and-hold/DCA des mêmes actifs sur la même fenêtre** + n trades
-      vs win rate d'équilibre (1/(1+payoff))
+- [x] **Remplissage au open de J+1, jamais au prix du signal** (`PaperEngine.fill_pending`,
+      PAP-01) : fill au open de la barre suivante + slippage contre la position ; remplir
+      le jour du signal lève une erreur. Tests `test_fill_at_next_open_not_signal_price` +
+      `test_fill_same_day_forbidden`.
+- [x] **Cycle quotidien idempotent** (PAP-05) : `trade_id` = hash(strategy_version, asset,
+      signal_date), `INSERT OR IGNORE` + retour du trade existant ; horodatage à l'horloge
+      réelle (`clock` injectable pour les tests). Tests `test_idempotent_trade_id`,
+      `test_real_clock_timestamps`.
+- [x] **Stop prioritaire** si stop et cible touchés le même jour (PAP-03) — test
+      `test_stop_priority_same_day` ; pas de suivi le jour du fill.
+- [x] **Journal par trade** conforme PAP-07 : nouvelle table `paper_trades` (trade_id,
+      strategy_version, signal_date, asset, direction, planned_entry, stop, target,
+      risk_pct, fill_price/date, exit_*, qty, fees, slippage_cost, pnl, r_planned,
+      r_realized, status, created_at) + CRUD store (`ptrade_*`). R = pnl net / risque
+      initial au stop (PAP-04) — test `test_target_exit_and_r_realized_net`.
+- [x] **Modèle de coûts non négociable** (PAP-06) : `CostModel` avec plancher frais AR
+      ≥ 0,1 % du notionnel, slippage 0,05 %/côté fixe ou `vol_mult × ATR%`, appliqué
+      **contre** la position à l'entrée et à la sortie. Toutes les métriques du dashboard
+      sont nettes de coûts.
+- [x] **Tableau de bord** (PAP-08, `PaperEngine.dashboard`, trades clôturés uniquement) :
+      espérance en R + IC95 (±2σ/√n), win rate **et** payoff, max DD en R et en %,
+      win rate d'équilibre 1/(1+payoff), + benchmark **buy-and-hold des mêmes actifs sur
+      la même fenêtre** lu dans le store. Test `test_dashboard_closed_only_and_metrics`.
+- [x] **GUI** : section « Moteur conforme » dans l'onglet Paper — enregistrer le conseil du
+      jour (depuis l'avis Ctrl+R, `strategy_version` = hash des params), jour suivant
+      (fill open J+1 + suivi), tableau de bord ; i18n fr/en. Smoke test headless OK.
+- [x] `strategy_version(key, params)` (hash gelé — AUD-04/GOU-01) dans `strategies/__init__.py`
 
 ### P6.2 — Versionnage & gouvernance SPEC §3.7 (GOU-xx)
 
