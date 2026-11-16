@@ -123,15 +123,16 @@ class MLSignal(Strategy):
         model = None
         pos = np.zeros(n)
         for i in range(min_train, n):
-            if np.isnan(y[i]):
-                pos[i] = pos[i - 1] if i > 0 else 0
-                continue
+            # Réentraînement à la barre i : labels y[k] pour k < i uniquement.
+            # y[k] = f(close[k+1]/close[k]) a besoin de close[k+1] <= close[i] : causal.
+            # (Ne JAMAIS inclure y[i] : il dépend de close[i+1], donc du futur.)
             if model is None or (i - min_train) % retrain == 0:
                 lo = max(0, i - window)
                 mask = ~np.isnan(y[lo:i])
                 if mask.sum() >= 30:
                     model = self._make_model(device)
                     model.fit(X[lo:i][mask], y[lo:i][mask])
+            # Prédiction à la barre i : ne dépend que de X[i] (features <= i) — jamais de y[i].
             if model is not None:
                 prob = model.predict_proba(X[i : i + 1])[0, 1]
                 pos[i] = 1.0 if prob > 0.5 + margin else 0.0

@@ -198,18 +198,23 @@ Légende : **(déjà en place)** = existe, à consolider ; le reste est à const
 
 ### P6.3 — Audit anti-biais en tests automatisés SPEC §3.6 (AUD-xx)
 
-- [ ] **Look-ahead (priorité absolue)** : test de non-régression par troncature — 20 jours
-      historiques aléatoires (seed fixe), tronquer à J, recalculer le conseil, vérifier
-      l'identité avec le conseil « d'époque » ; `shift()` systématique ; pas de
-      resample/merge sur l'ensemble complet avant split train/test ; chasse aux indicateurs
-      « repaint » (ZigZag, fractales, Supertrend recalculé). *(Partiel : test
-      `test_no_lookahead_entry_next_bar` existe sur le backtest ; à étendre à l'avis/screener
-      et au remplissage J+1.)*
+- [x] **Look-ahead (priorité absolue)** — fait dans `tests/test_antibias.py` : 20 jours J
+      aléatoires (seed fixe), troncature à J et identité vérifiée pour (a) tous les
+      indicateurs à la ligne J (détection de repaint), (b) les signaux position/stop/target
+      des 6 stratégies à J, (c) l'avis `advise` à J (score/label inchangés si on perturbe
+      les barres futures), (d) le préfixe de la courbe d'equity du backtest, (e) aucun
+      remplissage au prix du jour du signal (fill = open de la barre suivante).
+      **Bug réel trouvé et corrigé** : `ml_signal` sautait la prédiction quand le label
+      `y[i]` était NaN (dernier barre) — l'entraînement incluait sinon `y[i]` (futur) ;
+      corrigé : entraînement sur labels `< i`, prédiction systématique à `i`.
+      Note infra : `tests/__init__.py` fige `OMP_NUM_THREADS=1` (fork d'un process
+      multi-threadé OpenMP deadlockait le test de pool)
 - [ ] **Survivorship bias** : l'univers éligible au jour J est celui connu à J (crypto :
       inclure disparus/illiquides) ; test : aucune info postérieure (delisting, cap/volume
       actuels) dans le filtre historique
-- [ ] **Cherry-picking** : test — nombre de lignes du journal == nombre de signaux émis
-      par version de stratégie (aucune exclusion rétrospective)
+- [x] **Cherry-picking** — fait : `apply_screener` retourne `n_signals` = nb de lignes de
+      scan traitées et chaque ligne non actionnée est explicitement dans `skipped`
+      (test `test_every_signal_row_is_counted`)
 - [ ] **Overfitting** : split temporel train/test + walk-forward existants ; ajouter :
       alerte « trop de paramètres » (score pénalisé déjà dans `grid_search`, à afficher)
       et test de version gelée (changer un paramètre -> nouvelle `strategy_version`)

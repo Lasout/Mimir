@@ -183,7 +183,9 @@ class PaperPortfolio:
         """Applique les recommandations du screener : ouvre sur les ACHAT, clôture si le
         signal repasse non-ACHAT, ou si stop/objectif touché au dernier cours.
 
-        Retourne {"opened": [...], "closed": [...], "skipped": [...]}."""
+        Retourne {"opened": [...], "closed": [...], "skipped": [...], "n_signals": int}.
+        `n_signals` = nombre de lignes de scan traitées (AUD-03 : chaque signal émis est
+        compté, aucune exclusion rétrospective)."""
         opened, closed, skipped = [], [], []
         by_sym = {r["symbol"]: r for r in rows if not r.get("error")}
         # 1) clôtures : stop / objectif / signal de sortie
@@ -207,9 +209,14 @@ class PaperPortfolio:
                 closed.append(self.close_position(p["id"], px, reason=reason))
             else:
                 skipped.append(p["symbol"])
-        # 2) ouvertures sur les ACHAT restants
+        # 2) ouvertures sur les ACHAT restants ; toute ligne non actionnée est comptée
+        #    dans "skipped" (AUD-03 : aucun signal émis n'est perdu silencieusement)
         for r in rows:
-            if r.get("error") or r.get("position") != "ACHAT":
+            if r.get("error"):
+                skipped.append(f"{r['symbol']} (erreur: {r['error']})")
+                continue
+            if r.get("position") != "ACHAT":
+                skipped.append(f"{r['symbol']} (signal {r.get('position')})")
                 continue
             sym = r["symbol"]
             if any(p["symbol"] == sym for p in self.open_positions()):
@@ -234,4 +241,4 @@ class PaperPortfolio:
                 opened.append(pos)
             except PaperError as exc:
                 skipped.append(f"{sym} ({exc})")
-        return {"opened": opened, "closed": closed, "skipped": skipped}
+        return {"opened": opened, "closed": closed, "skipped": skipped, "n_signals": len(rows)}

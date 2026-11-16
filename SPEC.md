@@ -102,7 +102,7 @@ appliqués, résultat enregistré en **multiple de R** (R = gain/perte ÷ risque
   - benchmark **buy-and-hold / DCA des mêmes actifs sur la même fenêtre** ;
   - nombre de trades clôturés vs **win rate d'équilibre** = 1/(1+payoff).
 
-### 3.6 Audit anti-biais — AUD (P6, à faire ; chaque point = **test automatisé** qui doit passer avant de croire toute statistique)
+### 3.6 Audit anti-biais — AUD (P6, en cours : AUD-01 et AUD-03 faits ; chaque point = **test automatisé** qui doit passer avant de croire toute statistique)
 
 - AUD-01 **Look-ahead (priorité absolue)** : tout signal du jour J est calculé avec des
   données ≤ J. Test de non-régression : 20 jours historiques aléatoires (seed fixe),
@@ -111,11 +111,19 @@ appliqués, résultat enregistré en **multiple de R** (R = gain/perte ÷ risque
   le split train/test, normalisation/indicateurs recalculés sur la fenêtre passée seulement,
   chasse aux indicateurs « repaint » (ZigZag, fractales non confirmées, Supertrend recalculé).
   **Fill du jour même interdit** (backtest invalide par construction s'il remplit au prix du signal).
+  **Statut : fait** — `tests/test_antibias.py` (6 tests : invariance par troncature à J des
+  indicateurs, des signaux des 6 stratégies, de l'avis, du préfixe d'equity ; fill = open
+  de J+1). A détecté et corrigé un vrai leak dans `ml_signal` (prédiction sautée quand le
+  label était NaN, entraînement sinon sur le label du futur) : entraînement sur labels `< i`,
+  prédiction systématique à `i`.
 - AUD-02 **Survivorship bias** : l'univers éligible à J est celui connu à J (crypto : inclure
   disparus/illiquides). Test : aucune info postérieure (délisting, cap/volume actuels) dans
   le filtre historique.
 - AUD-03 **Cherry-picking** : toutes les métriques incluent chaque signal émis. Test :
   `len(journal) == signaux émis par strategy_version`.
+  **Statut : fait (niveau paper)** — `apply_screener` retourne `n_signals` (nb de lignes de
+  scan traitées) et chaque ligne non actionnée est explicitement dans `skipped` ; test
+  `test_every_signal_row_is_counted`.
 - AUD-04 **Overfitting des paramètres** : version de stratégie = jeu de paramètres gelé ;
   toute modification = nouvelle version (compteur d'échantillon remis à zéro). Backtest :
   split temporel train/test, walk-forward (optimiser sur fenêtre glissante, valider sur la
@@ -188,3 +196,4 @@ notionnel ne sont pas réunis.
 |---|---|---|
 | 1.0.0 | 2026-11-15 | Cahier des charges initial (`cadsup.md`) : paper trading conforme + audit anti-biais + go/no-go. |
 | 1.1.0 | 2026-11-15 | Restructuration en SPEC global (IDs stables, statuts, priorités) ; `cadsup.md` intégré en §3.5–§3.8 et supprimé. |
+| 1.1.1 | 2026-11-15 | AUD-01 (look-ahead) et AUD-03 (cherry-picking) faits : `tests/test_antibias.py` ; correction du leak look-ahead dans `ml_signal`. |
