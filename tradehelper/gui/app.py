@@ -26,6 +26,7 @@ from ..data.universe import default_symbols, universe_for
 from ..fees import get_fee_model, list_presets
 from ..paper import PaperError, PaperPortfolio
 from ..paper_engine import Bar, PaperEngine, PaperEngineError
+from ..regime import regime_coverage
 from ..screener import screen_assets, top_pick
 from ..strategies import get_strategy, list_strategies, strategy_version
 from .chart import attach_price_crosshair, draw_equity_chart, draw_price_chart
@@ -1730,6 +1731,9 @@ class TradeHelperApp:
                 if abs(d["expectancy_r"]) <= d["expectancy_ic95"]
                 else f"IC95 ±{d['expectancy_ic95']:.3f}"
             )
+        # AUD-06 : avertissement de significativité statistique (n < 100 ou IC contient 0)
+        sig_key = "engine_significance_ok" if d.get("significance_ok") else "engine_significance_warn"
+        parts.append(t(sig_key, self.lang).format(conclusion=d.get("conclusion", "")))
         if d["win_rate"] is not None:
             parts.append(
                 f"win rate {d['win_rate'] * 100:.0f} % / payoff {d['payoff']:.2f}"
@@ -1824,6 +1828,7 @@ class TradeHelperApp:
             "type",
             "cours",
             "avis",
+            "régime",
             "stratégie",
             "sharpe",
             "ret%",
@@ -1840,6 +1845,7 @@ class TradeHelperApp:
             "type": 60,
             "cours": 80,
             "avis": 150,
+            "régime": 70,
             "stratégie": 170,
             "sharpe": 60,
             "ret%": 70,
@@ -1935,6 +1941,7 @@ class TradeHelperApp:
                         r.get("type", ""),
                         r["last_close"],
                         r["label"],
+                        r.get("regime", ""),
                         r["strategy_label"],
                         r["sharpe"],
                         f"{r['total_return'] * 100:+.1f}"
@@ -1957,9 +1964,14 @@ class TradeHelperApp:
             else:
                 be_used = detect_backend() if be == "auto" else be
                 be_label = backend_label(be_used)
+            # AUD-05 : couverture des régimes de marché sur l'échantillon scanné
+            cov = regime_coverage([r.get("regime", "") for r in result if not r["error"]])
+            regimes_txt = t("screener_regimes", self.lang).format(n=cov["n_regimes"])
+            if not cov["ok"] and n_ok > 0:
+                regimes_txt += t("screener_regimes_warn", self.lang)
             self.status.set(
                 f"Screener terminé : {n_ok}/{len(result)} actifs analysés "
-                f"({vals['source']}, {vals['interval']}) — calcul : {be_label}. "
+                f"({vals['source']}, {vals['interval']}) — {regimes_txt} — calcul : {be_label}. "
                 f"Double-clic pour ouvrir un actif."
             )
             pick = top_pick(result)

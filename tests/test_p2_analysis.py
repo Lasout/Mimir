@@ -29,6 +29,26 @@ class TestGridSearch(unittest.TestCase):
         out = grid_search(df, "ma_cross", {}, fee=FeeModel("zero"))
         self.assertIn("score", out.columns) or out.empty
 
+    def test_aud04_overfit_warning_attrs(self):
+        # AUD-04 : la grille expose le nombre de degrés de liberté et avertit
+        # quand la recherche comporte beaucoup de paramètres / combinaisons
+        df = make_trend_reversal(n=300)
+        small = grid_search(df, "ma_cross", {"fast": [5, 10], "slow": [30, 50]}, fee=FeeModel("zero"), min_trades=1)
+        self.assertEqual(small.attrs["n_params"], 2)
+        self.assertEqual(small.attrs["n_combos"], 4)
+        self.assertIsNone(small.attrs["overfit_warning"])
+        big = grid_search(
+            df,
+            "ma_cross",
+            {"fast": [5, 10, 20], "slow": [30, 50, 100], "trend_filter": [True, False], "trend_ema": [100, 200]},
+            fee=FeeModel("zero"),
+            min_trades=1,
+        )
+        self.assertEqual(big.attrs["n_params"], 4)
+        self.assertEqual(big.attrs["n_combos"], 36)
+        self.assertIsNotNone(big.attrs["overfit_warning"])
+        self.assertIn("overfitting", big.attrs["overfit_warning"])
+
 
 class TestWalkForward(unittest.TestCase):
     def test_fixed_params(self):

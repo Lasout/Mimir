@@ -6,6 +6,17 @@ Format [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versions séman
 
 Licence : [MIT](LICENSE) — réutilisation/fork libres avec citation de l'origine.
 
+## [Non publié]
+
+### Ajouté
+- P6.3 (audit anti-biais, SPEC §3.6) terminé : AUD-02 survivorship (tests : symbole hors
+  univers scané quand même, store conserve les actifs delistés), AUD-04 warning overfitting
+  exposé par `grid_search` (`attrs["n_params"]/["n_combos"]/["overfit_warning"]`),
+  AUD-05 régime de marché (`tradehelper/regime.py` : colonne « régime » dans le screener +
+  couverture des régimes dans le statut GUI), AUD-06 significativité (`dashboard()` :
+  `min_trades_ok`, `significance_ok`, `conclusion` — « on ne sait rien » si n < 100 ou IC
+  contient 0, affiché dans le dashboard GUI).
+
 ## [0.1.0] — 2026-11-15
 
 Première version fonctionnelle complète (P0–P5 de la roadmap).

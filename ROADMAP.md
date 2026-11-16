@@ -223,21 +223,27 @@ Légende : **(déjà en place)** = existe, à consolider ; le reste est à const
       corrigé : entraînement sur labels `< i`, prédiction systématique à `i`.
       Note infra : `tests/__init__.py` fige `OMP_NUM_THREADS=1` (fork d'un process
       multi-threadé OpenMP deadlockait le test de pool)
-- [ ] **Survivorship bias** : l'univers éligible au jour J est celui connu à J (crypto :
-      inclure disparus/illiquides) ; test : aucune info postérieure (delisting, cap/volume
-      actuels) dans le filtre historique
+- [x] **Survivorship bias** — fait : le screener traite tout symbole demandé même s'il est
+      absent de l'univers d'aujourd'hui (ex. crypto delistée), et le store conserve les
+      barres des actifs « delistés » (aucune purge rétroactive) ; tests
+      `TestSurvivorshipBias` dans `tests/test_antibias.py`
 - [x] **Cherry-picking** — fait : `apply_screener` retourne `n_signals` = nb de lignes de
       scan traitées et chaque ligne non actionnée est explicitement dans `skipped`
       (test `test_every_signal_row_is_counted`)
-- [ ] **Overfitting** : split temporel train/test + walk-forward existants ; ajouter :
-      alerte « trop de paramètres » (score pénalisé déjà dans `grid_search`, à afficher)
-      et test de version gelée (changer un paramètre -> nouvelle `strategy_version`)
-- [ ] **Régime de marché** : taguer chaque métrique du régime de la période (haussier/plat/
-      baissier via tendance d'un indice de référence, ex. SPY/BTC) ; aucune conclusion
-      préliminaire hors échantillon couvrant ≥ 2 régimes
-- [ ] **Significativité** : seuil ≥ 100 trades clôturés par version avant toute conclusion ;
-      afficher l'intervalle de confiance de l'espérance (± 2·σ_R/√n) — si l'IC contient 0,
-      afficher « on ne sait rien »
+- [x] **Overfitting** — fait : split temporel train/test + walk-forward existants ;
+      `grid_search` expose désormais `attrs["n_params"]`, `attrs["n_combos"]` et
+      `attrs["overfit_warning"]` (≥ 4 paramètres ou > 500 combinaisons) ; version gelée :
+      changer un paramètre -> nouvelle `strategy_version` (P6.2). Test
+      `test_aud04_overfit_warning_attrs`
+- [x] **Régime de marché** — fait : `tradehelper/regime.py` (`detect_regime` :
+      haussier/plat/baissier via rendement fenêtre + position vs SMA + pente de SMA ;
+      `regime_coverage` : ok si ≥ 2 régimes couverts). Chaque ligne du screener porte
+      `regime`, le statut GUI affiche la couverture (ex. « régimes couverts : 2/3 » avec
+      avertissement si un seul). Tests `tests/test_regime.py`
+- [x] **Significativité** — fait : `PaperEngine.dashboard()` expose `min_trades_ok`
+      (n ≥ 100), `significance_ok` (n ≥ 100 et IC95 exclut 0) et `conclusion` (« on ne
+      sait rien » si insuffisant), affichés dans le dashboard GUI. Tests AUD-06 dans
+      `tests/test_paper_engine.py`
 
 ### P6.4 — Grille go/no-go capital réel SPEC §5 (GNG-xx)
 

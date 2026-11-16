@@ -346,6 +346,49 @@ class TestDashboard(unittest.TestCase):
         self.assertIsNone(d["expectancy_ic95"])
         self.assertIsNone(d["max_drawdown_r"])
 
+    def _many_trades(self, n: int, pattern: str = "all_win"):
+        dates = pd.bdate_range("2026-03-02", periods=3 * n + 2)
+        for i in range(n):
+            # gain +2R (target 110 depuis fill 100, risque 5) ou perte -1R (stop 95)
+            is_win = i % 3 == 0 if pattern == "third_win" else True
+            bar = (
+                dict(open=105.0, high=111.0, low=104.0, close=110.5)
+                if is_win
+                else dict(open=99.0, high=100.0, low=94.0, close=95.0)
+            )
+            self._trade(
+                "AAPL", str(dates[3 * i].date()), str(dates[3 * i + 1].date()), str(dates[3 * i + 2].date()), bar
+            )
+
+    def test_aud06_insufficient_sample(self):
+        # AUD-06 : moins de 100 trades clôturés -> aucune conclusion statistique
+        self._trade(
+            "AAPL", "2026-01-10", "2026-01-11", "2026-01-12", dict(open=105.0, high=111.0, low=104.0, close=110.5)
+        )
+        d = self.eng.dashboard()
+        self.assertEqual(d["n_closed"], 1)
+        self.assertFalse(d["min_trades_ok"])
+        self.assertFalse(d["significance_ok"])
+        self.assertIn("insuffisant", d["conclusion"])
+
+    def test_aud06_significant_when_ic_excludes_zero(self):
+        self._many_trades(100)  # 100 trades identiques gagnants : IC = 0
+        d = self.eng.dashboard()
+        self.assertEqual(d["n_closed"], 100)
+        self.assertTrue(d["min_trades_ok"])
+        self.assertTrue(d["significance_ok"])
+        self.assertIn("significativement", d["conclusion"])
+
+    def test_aud06_not_significant_when_ic_contains_zero(self):
+        # 1/3 de gagnants (+2R) / 2/3 de perdants (-1R) : expectancy ~ 0, IC > 0
+        self._many_trades(100, pattern="third_win")
+        d = self.eng.dashboard()
+        self.assertEqual(d["n_closed"], 100)
+        self.assertTrue(d["min_trades_ok"])
+        self.assertLess(abs(d["expectancy_r"]), 0.1)  # ~0 (frais inclus)
+        self.assertFalse(d["significance_ok"])
+        self.assertIn("on ne sait rien", d["conclusion"])
+
     def test_reset(self):
         self._trade(
             "AAPL", "2026-01-10", "2026-01-11", "2026-01-12", dict(open=105.0, high=111.0, low=104.0, close=110.5)

@@ -71,4 +71,14 @@ def grid_search(
     pool[neighbor_col] = neigh
     pool["score"] = pool[metric] - 0.5 * (pool[metric] - pool[neighbor_col]).clip(lower=0)
     pool = pool.sort_values("score", ascending=False)
+    # AUD-04 : vigilance sur le nombre de paramètres — un bon backtest avec beaucoup de
+    # degrés de liberté est probablement du bruit ajusté (warning exposé au caller)
+    pool.attrs["n_params"] = len(keys)
+    pool.attrs["n_combos"] = len(combos)
+    pool.attrs["overfit_warning"] = (
+        f"{len(keys)} paramètres libres / {len(combos)} combinaisons testées : risque "
+        "d'overfitting élevé, valider en walk-forward"
+        if len(keys) >= 4 or len(combos) > 500
+        else None
+    )
     return pool.head(top) if top else pool

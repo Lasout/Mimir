@@ -102,7 +102,7 @@ appliqués, résultat enregistré en **multiple de R** (R = gain/perte ÷ risque
   - benchmark **buy-and-hold / DCA des mêmes actifs sur la même fenêtre** ;
   - nombre de trades clôturés vs **win rate d'équilibre** = 1/(1+payoff).
 
-### 3.6 Audit anti-biais — AUD (P6, en cours : AUD-01 et AUD-03 faits ; chaque point = **test automatisé** qui doit passer avant de croire toute statistique)
+### 3.6 Audit anti-biais — AUD (P6, **fait : AUD-01…AUD-06** ; chaque point = **test automatisé** qui doit passer avant de croire toute statistique)
 
 - AUD-01 **Look-ahead (priorité absolue)** : tout signal du jour J est calculé avec des
   données ≤ J. Test de non-régression : 20 jours historiques aléatoires (seed fixe),
@@ -119,6 +119,9 @@ appliqués, résultat enregistré en **multiple de R** (R = gain/perte ÷ risque
 - AUD-02 **Survivorship bias** : l'univers éligible à J est celui connu à J (crypto : inclure
   disparus/illiquides). Test : aucune info postérieure (délisting, cap/volume actuels) dans
   le filtre historique.
+  **Statut : fait** — `screen_assets` traite tout symbole demandé même absent de l'univers
+  d'aujourd'hui ; le store conserve les barres des actifs delistés (pas de purge
+  rétroactive). Tests `TestSurvivorshipBias` (`tests/test_antibias.py`).
 - AUD-03 **Cherry-picking** : toutes les métriques incluent chaque signal émis. Test :
   `len(journal) == signaux émis par strategy_version`.
   **Statut : fait (niveau paper)** — `apply_screener` retourne `n_signals` (nb de lignes de
@@ -129,12 +132,22 @@ appliqués, résultat enregistré en **multiple de R** (R = gain/perte ÷ risque
   split temporel train/test, walk-forward (optimiser sur fenêtre glissante, valider sur la
   suivante). Vigilance sur le nombre de paramètres (un bon backtest avec beaucoup de
   paramètres est probablement du bruit ajusté).
+  **Statut : fait** — `grid_search` expose `attrs["n_params"]/["n_combos"]/["overfit_warning"]`
+  (warning si ≥ 4 paramètres ou > 500 combinaisons) ; version gelée assurée par P6.2
+  (`strategy_version`). Test `test_aud04_overfit_warning_attrs`.
 - AUD-05 **Régime de marché** : taguer le régime de la période testée (haussier/plat/baissier
   via tendance d'un indice de référence) sur chaque métrique ; aucune conclusion préliminaire
   hors échantillon couvrant **≥ 2 régimes**.
+  **Statut : fait** — `tradehelper/regime.py` (`detect_regime` sur l'actif lui-même :
+  rendement fenêtre + close vs SMA + pente de SMA ; `regime_coverage` ok si ≥ 2 régimes) ;
+  chaque ligne du screener porte `regime`, le statut GUI affiche la couverture.
+  Tests `tests/test_regime.py`.
 - AUD-06 **Significativité statistique** : **≥ 100 trades clôturés** par version avant toute
   conclusion. Afficher l'intervalle de confiance de l'espérance (± 2·σ_R/√n) ; si l'IC
   contient 0, afficher « on ne sait rien ».
+  **Statut : fait** — `PaperEngine.dashboard()` retourne `min_trades_ok` (n ≥ 100),
+  `significance_ok` (n ≥ 100 et |espérance| > IC95) et `conclusion` (« on ne sait rien »
+  si insuffisant), affiché dans le dashboard GUI. Tests AUD-06 (`tests/test_paper_engine.py`).
 
 ### 3.7 Gouvernance du test — GOU (P6, **fait** : `PaperEngine.start_test/active_test/add_idea/cancel_signal/check_review`)
 
@@ -201,3 +214,4 @@ notionnel ne sont pas réunis.
 | 1.1.1 | 2026-11-15 | AUD-01 (look-ahead) et AUD-03 (cherry-picking) faits : `tests/test_antibias.py` ; correction du leak look-ahead dans `ml_signal`. |
 | 1.2.0 | 2026-11-16 | P6.1 fait : moteur paper conforme (PAP-01…08) — `paper_engine.py`, table `paper_trades`, dashboard + benchmark B&H, GUI. |
 | 1.3.0 | 2026-11-16 | P6.2 fait : gouvernance (GOU-01…04) — `start_test` (config figée, test_id), version verrouillée, carnet d'idées, `cancel_signal` interdit, revue/100 trades. |
+| 1.4.0 | 2026-11-16 | P6.3 fait : AUD-02 (survivorship), AUD-04 (warning overfitting `grid_search`), AUD-05 (régime — `regime.py`, colonne screener + couverture GUI), AUD-06 (significativité — `dashboard()` : `min_trades_ok`, `significance_ok`, `conclusion`). |

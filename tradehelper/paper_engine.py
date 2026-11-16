@@ -479,6 +479,20 @@ class PaperEngine:
             "cash": self.cash,
             "equity": self.equity(),
             "total_return": (self.equity() / self.initial_capital - 1.0) if self.initial_capital else None,
+            # AUD-06 : significativité statistique — il faut un échantillon suffisant
+            # (>= 100 trades clôturés) ET un intervalle de confiance à 95 % qui exclut 0
+            "min_trades_ok": n >= 100,
+            "significance_ok": bool(n >= 100 and expectancy is not None and ic is not None and abs(expectancy) > ic),
+            "conclusion": (
+                "Échantillon insuffisant (moins de 100 trades clôturés) : aucune conclusion "
+                "statistique fiable, continuer le paper trading."
+                if n < 100
+                else (
+                    "Expectancy significativement différente de 0 (IC 95 % exclut 0)."
+                    if expectancy is not None and ic is not None and abs(expectancy) > ic
+                    else "Expectancy non significativement différente de 0 : on ne sait rien conclure."
+                )
+            ),
         }
 
     def benchmark_buy_hold(self, interval: str = "1d") -> dict | None:

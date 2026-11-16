@@ -17,10 +17,12 @@ import numpy as np
 import pandas as pd
 
 import tradehelper.data.events as events_mod
+import tradehelper.screener as screener_mod
 from tests.helpers import make_ohlcv, make_trend_reversal
 from tradehelper.advice import advise
 from tradehelper.backtest import run_backtest
 from tradehelper.data.store import Store
+from tradehelper.data.universe import universe_for
 from tradehelper.fees import get_fee_model
 from tradehelper.indicators import add_all
 from tradehelper.paper import PaperPortfolio
@@ -186,6 +188,41 @@ class TestNoCherryPicking(unittest.TestCase):
                 continue
             self.assertIn(r["symbol"], accounted, f"signal {r['symbol']} non comptabilisé")
         self.assertIn("ERR (erreur: pas de données)", out["skipped"])
+
+
+class TestSurvivorshipBias(unittest.TestCase):
+    """AUD-02 : biais de survie — un actif sorti de l'univers d'aujourd'hui (delisté,
+    radié) ne doit pas être filtré rétrospectivement ni purgé de l'historique stocké."""
+
+    def setUp(self):
+        self._orig = screener_mod.load_data
+
+    def tearDown(self):
+        screener_mod.load_data = self._orig  # type: ignore[attr-defined]
+
+    def test_symbol_absent_universe_est_quand_meme_scanne(self):
+        # un symbole absent de l'univers d'aujourd'hui (ex. crypto delistée) est traité
+        # quand même : le screener ne filtre pas selon la composition actuelle de l'univers
+        sym = "DELISTEDCOIN"
+        self.assertNotIn(sym, universe_for("crypto"))
+        df = make_ohlcv(n=200, drift=0.003, vol=0.01, seed=17)
+        screener_mod.load_data = lambda *a, **k: df  # type: ignore[attr-defined]
+        rows = screener_mod.screen_assets("crypto", [sym], strategies=["ma_cross"], workers=1)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["symbol"], sym)
+        self.assertIsNone(rows[0]["error"])
+
+    def test_store_conserve_les_barres_d_un_actif_deliste(self):
+        # aucune purge rétroactive : les barres d'un actif "delisté" restent lisibles
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(Path(tmp) / "data.db")
+            df = make_ohlcv(n=120, seed=3)
+            n = store.upsert(df, "crypto", "DELISTEDCOIN", "1d")
+            self.assertEqual(n, 120)
+            self.assertGreater(store.count_source("crypto"), 0)
+            back = store.read("crypto", "DELISTEDCOIN", "1d")
+            self.assertEqual(len(back), 120)
+            self.assertTrue(np.isclose(back["Close"].iloc[-1], df["Close"].iloc[-1]))
 
 
 if __name__ == "__main__":

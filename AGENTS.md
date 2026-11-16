@@ -74,6 +74,7 @@ tradehelper/
 │                             #   sentiment news RSS (lexique fr/en) — fetchers injectables,
 │                             #   résultats cachés dans le store (TTL 6–24 h)
 ├── advice.py                 # avis combiné 65 % tech / 35 % fond -> label + raisons + stop + earnings
+├── regime.py                 # AUD-05 : detect_regime (haussier/plat/baissier) + regime_coverage (ok si >= 2 régimes)
 ├── screener.py               # screen_assets(backend=...) : backteste TOUTES les stratégies par
 │                             #   actif ; recommande position + horizon + entrée/stop/objectif ;
 │                             #   backend cpu -> pool de processus, cuda -> indicateurs GPU + ML CUDA ;

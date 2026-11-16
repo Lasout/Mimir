@@ -24,6 +24,7 @@ from .compute import add_all_dispatch, detect_backend
 from .data.sources import load_data
 from .data.universe import asset_type
 from .fees import FeeModel, get_fee_model
+from .regime import detect_regime
 from .strategies import get_strategy, list_strategies
 
 BAR_HOURS = {
@@ -177,6 +178,7 @@ def _screen_one(args: tuple) -> dict:
             "stop": round(rec["stop"], 4),
             "target": round(rec["target"], 4),
             "horizon": rec["horizon"],
+            "regime": detect_regime(df)["label"],  # AUD-05 : régime de la période testée
             "error": None,
         }
     except Exception as exc:
@@ -184,6 +186,7 @@ def _screen_one(args: tuple) -> dict:
             "symbol": sym,
             "type": asset_type(source, sym),
             "error": str(exc),
+            "regime": "",
             "score": "",
             "label": f"Erreur: {exc}"[:40],
             "position": "",
