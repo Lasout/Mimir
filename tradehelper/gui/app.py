@@ -1385,6 +1385,7 @@ class TradeHelperApp:
         ebtns = ttk.Frame(eframe)
         ebtns.pack(fill="x", padx=4, pady=2)
         for key, cmd in (
+            ("engine_newtest", self._engine_start_test),
             ("engine_record", self._engine_record_signal),
             ("engine_next", self._engine_next_day),
             ("engine_dash", self._engine_dashboard),
@@ -1602,6 +1603,27 @@ class TradeHelperApp:
             )
 
     # ------------------------------------------- moteur paper conforme (SPEC §3.5)
+    def _engine_start_test(self):
+        """GOU-01/02 : démarre un nouveau test avec la version de stratégie courante figée
+        (capital, risque 1 %, coûts fixés pour toute la durée du test)."""
+        if self.engine is None:
+            return
+        ver = strategy_version(self.strat_var.get(), get_strategy(self.strat_var.get()).params)
+        try:
+            capital = float(self.paper_capital.get() or 10_000)
+        except ValueError:
+            capital = 10_000.0
+        cfg = self.engine.start_test(f"test {ver}", ver, risk_pct=0.01, initial_capital=capital)
+        self._log_run(
+            "paper_engine",
+            ver,
+            f"nouveau test démarré ({cfg['test_id']}) — version figée {ver}, "
+            f"capital {capital:.0f}, risque 1 %, coûts fixés",
+            cfg,
+        )
+        self.status.set(f"Nouveau test {cfg['test_id']} — version figée : {ver}.")
+        self._engine_refresh()
+
     def _engine_record_signal(self):
         """Enregistre le conseil du jour J (données de J uniquement) — PAP-02/05."""
         if self.engine is None:
@@ -1617,6 +1639,9 @@ class TradeHelperApp:
         target = entry + 2.5 * risk  # R:R 2,5 comme le screener
         signal_date = str(pd.Timestamp(self.df.index[-1]).date())  # jour J = dernière barre chargée
         ver = strategy_version(self.strat_var.get(), get_strategy(self.strat_var.get()).params)
+        if self.engine.active_test() is None:
+            # premier signal : on fige la config maintenant (GOU-02)
+            self._engine_start_test()
         try:
             tr = self.engine.record_signal(
                 signal_date=signal_date,
@@ -1687,10 +1712,18 @@ class TradeHelperApp:
             return
         d = self.engine.dashboard()
         bh = self.engine.benchmark_buy_hold()
-        parts = [
-            f"trades clôturés : {d['n_closed']} (ouverts {d['n_open']}, en attente {d['n_pending']})",
-            f"espérance : {d['expectancy_r']:+.3f} R" if d["expectancy_r"] is not None else "espérance : -",
-        ]
+        reviewed = self.engine.check_review()  # GOU-04 : revue logguée tous les 100 trades
+        cfg = d["test"]
+        if cfg:
+            parts = [
+                f"test {cfg['test_id']} « {cfg['name']} » — version figée {cfg['strategy_version']} "
+                f"(depuis {cfg['started_at']})",
+                f"trades clôturés : {d['n_closed']} (ouverts {d['n_open']}, en attente {d['n_pending']}), "
+                f"idées au carnet : {d['n_ideas']}" + (" — REVUE DUE (100 trades)" if reviewed else ""),
+            ]
+        else:
+            parts = ["aucun test démarré (bouton « Nouveau test »)"]
+        parts.append(f"espérance : {d['expectancy_r']:+.3f} R" if d["expectancy_r"] is not None else "espérance : -")
         if d["expectancy_ic95"] is not None:
             parts.append(
                 f"IC95 ±{d['expectancy_ic95']:.3f} (contient 0 = on ne sait rien)"

@@ -190,16 +190,25 @@ Légende : **(déjà en place)** = existe, à consolider ; le reste est à const
       (fill open J+1 + suivi), tableau de bord ; i18n fr/en. Smoke test headless OK.
 - [x] `strategy_version(key, params)` (hash gelé — AUD-04/GOU-01) dans `strategies/__init__.py`
 
-### P6.2 — Versionnage & gouvernance SPEC §3.7 (GOU-xx)
+### P6.2 — Versionnage & gouvernance SPEC §3.7 (GOU-xx) — fait
 
-- [ ] **Version de stratégie figée** : `strategy_version` = hash gelé du jeu de paramètres
-      (ex. semver + hash) ; toute modif de paramètre = nouvelle version et **remise à zéro
-      du compteur d'échantillon**
-- [ ] **Carnet d'idées séparé** (notes sans appliquer à la version en cours)
-- [ ] Capital simulé, risque/trade (ex. 1 %) et modèle de coûts **fixés en début de test**
-- [ ] **Aucun décrochage manuel** : tout signal émis est journalisé et « tradé »
-      virtuellement, même absurde
-- [ ] Revue à chaque palier de 100 trades clôturés (événement dans l'historique des runs)
+- [x] **Version de stratégie figée** : `strategy_version(key, params)` = hash gelé du jeu de
+      paramètres (P6.1) ; `record_signal` **verrouille** le test en cours sur sa version :
+      toute autre version -> erreur demandant `start_test()` (nouveau test, compteur remis
+      à zéro). Tests `test_new_version_locked_to_test`, `test_start_test_freezes_config_and_resets`.
+- [x] **Carnet d'idées séparé** (GOU-01) : `add_idea`/`list_ideas` (journal kind='idée',
+      version visée renseignée) — jamais appliqué à la version en cours. Test `test_ideas_notebook_separate`.
+- [x] **Config figée en début de test** (GOU-02) : `start_test(name, version, risk_pct, cost,
+      initial_capital)` écrit la config dans `meta` (`paper_engine.test`), réinitialise le
+      capital et vide les trades (nouvel échantillon, AUD-04) ; `dashboard` ne compte que
+      les trades du test en cours (`test_id`). Test `test_dashboard_scoped_to_current_test`.
+- [x] **Aucun décrochage manuel** (GOU-03) : `cancel_signal()` lève une erreur par design
+      (un signal absurde est loggué et tradé virtuellement). Test `test_cancel_signal_forbidden`.
+- [x] **Revue tous les 100 trades** (GOU-04) : `check_review()` loggue un événement
+      `paper_review` dans l'historique des runs à chaque palier de 100 franchchi.
+      Test `test_review_every_100_trades`.
+- [x] GUI : bouton « Nouveau test (version figée) » ; le tableau de bord affiche le test
+      actif (nom, version, date), le nombre d'idées et la revue due.
 
 ### P6.3 — Audit anti-biais en tests automatisés SPEC §3.6 (AUD-xx)
 

@@ -120,6 +120,7 @@ class PaperEngine:
     ):
         self.store = store
         self.initial_capital = float(initial_capital)
+        self._default_capital = float(initial_capital)  # capital de référence pour les nouveaux tests
         self.risk_pct = float(risk_pct)
         self.cost = cost or CostModel()
         self.max_positions = int(max_positions)
@@ -144,6 +145,89 @@ class PaperEngine:
     def reset(self) -> None:
         self.store.ptrade_clear()
         self.cash = self.initial_capital
+
+    # ------------------------------------------------------------- gouvernance (GOU, SPEC §3.7)
+    def start_test(
+        self,
+        name: str,
+        strategy_version: str,
+        risk_pct: float | None = None,
+        cost: CostModel | None = None,
+        initial_capital: float | None = None,
+    ) -> dict:
+        """Démarre un NOUVEAU test (GOU-01/02, AUD-04) : la config (version de stratégie,
+        capital, risque/trade, modèle de coûts) est figée dans `meta` pour toute la durée
+        du test. Tout changement de paramètre = nouveau test (compteur remis à zéro :
+        les anciens trades sont effacés et le capital réinitialisé)."""
+        test_id = hashlib.sha1(
+            f"{name}|{strategy_version}|{self.clock().strftime('%Y-%m-%d %H:%M:%S.%f')}".encode()
+        ).hexdigest()[:12]
+        cost = cost or self.cost
+        cfg = {
+            "test_id": test_id,
+            "name": name,
+            "strategy_version": strategy_version,
+            "risk_pct": float(risk_pct if risk_pct is not None else self.risk_pct),
+            "initial_capital": float(initial_capital if initial_capital is not None else self._default_capital),
+            "cost": {
+                "fee_pct_rt": cost.fee_pct_rt,
+                "slippage_pct": cost.slippage_pct,
+                "slippage_mode": cost.slippage_mode,
+                "vol_mult": cost.vol_mult,
+            },
+            "started_at": self.clock().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        self.store.meta_set("paper_engine.test", cfg)
+        self.store.meta_set("paper_engine.last_review_n", 0)
+        self.store.ptrade_clear()  # nouveau test = nouvel échantillon (AUD-04)
+        self.initial_capital = cfg["initial_capital"]
+        self.risk_pct = cfg["risk_pct"]
+        self.cost = cost
+        self.cash = cfg["initial_capital"]  # capital fixé en début de test (GOU-02)
+        return cfg
+
+    def active_test(self) -> dict | None:
+        """Config du test en cours (figée dans meta), ou None si aucun test démarré."""
+        return self.store.meta_get("paper_engine.test")
+
+    def add_idea(self, text: str, strategy_version: str | None = None) -> int:
+        """Carnet d'idées SÉPARÉ (GOU-01) : une idée n'est jamais appliquée à la version
+        en cours — journalisée (kind='idée') avec la version visée."""
+        ver = strategy_version or (self.active_test() or {}).get("strategy_version") or "?"
+        return self.store.journal_add(ver, "idée", text)
+
+    def list_ideas(self) -> list[dict]:
+        return [e for e in self.store.journal_list(500) if e["kind"] == "idée"]
+
+    def cancel_signal(self, trade_id: str) -> None:
+        """GOU-03 : aucun décrochage manuel — pas d'annulation rétrospective d'un signal.
+        Un conseil « absurde » est loggué et tradé virtuellement, jamais annulé."""
+        raise PaperEngineError("annulation d'un signal interdite (GOU-03) : on le loggue et on le trade virtuellement")
+
+    def check_review(self) -> bool:
+        """GOU-04 : revue à chaque palier de 100 trades clôturés (test en cours).
+        Retourne True si un nouveau palier de 100 a été franchi (et loggue la revue)."""
+        cfg = self.active_test()
+        if not cfg:
+            return False
+        n = len(
+            [
+                t
+                for t in self.store.ptrade_list(status="closed")
+                if t["test_id"] == cfg["test_id"] and t["r_realized"] is not None
+            ]
+        )
+        last = int(self.store.meta_get("paper_engine.last_review_n") or 0)
+        if n // 100 > last // 100:
+            self.store.meta_set("paper_engine.last_review_n", n)
+            self.store.log_run(
+                "paper_review",
+                cfg["strategy_version"],
+                f"REVUE (GOU-04) : palier de 100 trades franchi (n={n})",
+                {"n_closed": n},
+            )
+            return True
+        return False
 
     # ------------------------------------------------------------- 1) signal (jour J)
     def record_signal(
@@ -172,6 +256,14 @@ class PaperEngine:
         risk = float(stop - planned_entry if direction == "short" else planned_entry - stop)
         if risk <= 0:
             raise PaperEngineError("stop incohérent avec la direction (risque <= 0)")
+        cfg = self.active_test()
+        if cfg is None:
+            raise PaperEngineError("aucun test démarré : appeler start_test() (GOU-02)")
+        if cfg["strategy_version"] != strategy_version:
+            raise PaperEngineError(
+                f"version {strategy_version} != version du test en cours {cfg['strategy_version']} "
+                "(GOU-01/AUD-04) : démarrer un nouveau test avec start_test()"
+            )
         tid = make_trade_id(strategy_version, asset, signal_date)
         existing = self.store.ptrade_get(tid)
         if existing is not None:
@@ -181,7 +273,7 @@ class PaperEngine:
             >= self.max_positions
         ):
             raise PaperEngineError(f"nombre max de positions atteint ({self.max_positions})")
-        rp = risk_pct if risk_pct is not None else self.risk_pct
+        rp = float(risk_pct if risk_pct is not None else cfg["risk_pct"])
         r_planned = (target - planned_entry) / risk if direction == "long" else (planned_entry - target) / risk
         trade = {
             "trade_id": tid,
@@ -197,6 +289,7 @@ class PaperEngine:
             "r_planned": float(r_planned),
             "status": "pending",
             "created_at": self.clock().strftime("%Y-%m-%d %H:%M:%S"),  # PAP-05 : horloge réelle
+            "test_id": cfg["test_id"],
         }
         self.store.ptrade_add(trade)
         return self.store.ptrade_get(tid)
@@ -330,10 +423,14 @@ class PaperEngine:
         )
 
     # ------------------------------------------------------------- 4) tableau de bord (PAP-08)
-    def dashboard(self) -> dict:
-        """Métriques de pilotage, recalculées UNIQUEMENT sur les trades clôturés (PAP-08).
+    def dashboard(self, test_id: str | None = None) -> dict:
+        """Métriques de pilotage, recalculées UNIQUEMENT sur les trades clôturés (PAP-08),
+        restreintes au test en cours par défaut (GOU-02 : compteur par version de test).
         Toutes nettes de frais et slippage (PAP-06)."""
-        closed = [t for t in self.store.ptrade_list(status="closed") if t["r_realized"] is not None]
+        cfg = self.active_test()
+        tid = test_id or (cfg or {}).get("test_id")
+        all_closed = [t for t in self.store.ptrade_list(status="closed") if t["r_realized"] is not None]
+        closed = [t for t in all_closed if tid is None or t["test_id"] == tid]
         rs = [t["r_realized"] for t in closed]
         n = len(rs)
         wins = [r for r in rs if r > 0]
@@ -366,9 +463,12 @@ class PaperEngine:
             if eq_peak > 0:
                 maxdd_pct = min(maxdd_pct, (eq - eq_peak) / eq_peak)
         return {
+            "test": cfg,
             "n_closed": n,
             "n_open": len(self.store.ptrade_list(status="open")),
             "n_pending": len(self.store.ptrade_list(status="pending")),
+            "n_ideas": len(self.list_ideas()),
+            "review_due": (n > 0 and n % 100 == 0),
             "expectancy_r": expectancy,  # cible +0,15 R .. +0,30 R
             "expectancy_ic95": ic,  # ± 2 sigma / sqrt(n)
             "win_rate": win_rate,

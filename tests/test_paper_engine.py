@@ -57,6 +57,8 @@ class TestRecordSignal(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.store = Store(Path(self.tmp.name) / "t.db")
         self.eng = PaperEngine(store=self.store, initial_capital=100_000, risk_pct=0.01, clock=clock_seq())
+        self.v = strategy_version("ma_cross", {"fast": 10, "slow": 30})
+        self.eng.start_test("test-1", self.v)  # GOU-02 : test démarré avant tout signal
 
     def tearDown(self):
         self.store.close()
@@ -91,11 +93,13 @@ class TestRecordSignal(unittest.TestCase):
         self.assertEqual(t1["status"], "pending")
         self.assertAlmostEqual(t1["r_planned"], (110 - 100) / (100 - 95))  # PAP-04
 
-    def test_new_version_new_trade(self):
-        # AUD-04 : changer un paramètre -> nouvelle version -> nouveau trade_id
+    def test_new_version_locked_to_test(self):
+        # AUD-04/GOU-01 : changer un paramètre -> nouvelle version, mais le test en cours
+        # est verrouillé sur sa version : il faut start_test() (compteur remis à zéro)
         v1 = strategy_version("ma_cross", {"fast": 10})
         v2 = strategy_version("ma_cross", {"fast": 11})
         self.assertNotEqual(v1, v2)
+        self.eng.start_test("t-v1", v1)
         t1 = self.eng.record_signal(
             signal_date="2026-01-10",
             asset="AAPL",
@@ -106,17 +110,18 @@ class TestRecordSignal(unittest.TestCase):
             target=110.0,
             strategy_version=v1,
         )
-        t2 = self.eng.record_signal(
-            signal_date="2026-01-10",
-            asset="AAPL",
-            source="stock",
-            direction="long",
-            planned_entry=100.0,
-            stop=95.0,
-            target=110.0,
-            strategy_version=v2,
-        )
-        self.assertNotEqual(t1["trade_id"], t2["trade_id"])
+        with self.assertRaises(PaperEngineError):
+            self.eng.record_signal(
+                signal_date="2026-01-10",
+                asset="AAPL",
+                source="stock",
+                direction="long",
+                planned_entry=100.0,
+                stop=95.0,
+                target=110.0,
+                strategy_version=v2,
+            )
+        self.assertEqual(t1["trade_id"], make_trade_id(v1, "AAPL", "2026-01-10"))
 
     def test_real_clock_timestamps(self):
         # PAP-05 : horodatage à l'horloge réelle (injectée ici), jamais manuel
@@ -128,7 +133,7 @@ class TestRecordSignal(unittest.TestCase):
             planned_entry=100.0,
             stop=95.0,
             target=110.0,
-            strategy_version="ma_cross@deadbeef",
+            strategy_version=self.v,
         )
         self.assertTrue(t["created_at"].startswith("2026-01-10 21:0"))
 
@@ -158,6 +163,7 @@ class TestFillAndFollow(unittest.TestCase):
             clock=clock_seq(),
         )
         self.v = strategy_version("ma_cross", {"fast": 10, "slow": 30})
+        self.eng.start_test("test-1", self.v)
         self.t = self.eng.record_signal(
             signal_date="2026-01-10",
             asset="AAPL",
@@ -276,6 +282,7 @@ class TestDashboard(unittest.TestCase):
             store=self.store, initial_capital=100_000, risk_pct=0.01, cost=CostModel(), clock=clock_seq()
         )
         self.v = strategy_version("ma_cross", {"fast": 10})
+        self.eng.start_test("test-1", self.v)
 
     def tearDown(self):
         self.store.close()
@@ -346,6 +353,149 @@ class TestDashboard(unittest.TestCase):
         self.eng.reset()
         self.assertEqual(self.store.ptrade_list(), [])
         self.assertAlmostEqual(self.eng.cash, 100_000)
+
+
+class TestGovernance(unittest.TestCase):
+    """SPEC §3.7 (GOU-01…04) : version figée, test figé, pas d'annulation, carnet d'idées,
+    revue tous les 100 trades."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = Store(Path(self.tmp.name) / "t.db")
+        self.eng = PaperEngine(store=self.store, initial_capital=100_000, risk_pct=0.01, clock=clock_seq())
+        self.v = strategy_version("ma_cross", {"fast": 10})
+
+    def tearDown(self):
+        self.store.close()
+        self.tmp.cleanup()
+
+    def _closed_trade(self, tid, test_id, r, pnl, exit_date="2026-01-15"):
+        self.store.ptrade_add(
+            {
+                "trade_id": tid,
+                "strategy_version": self.v,
+                "signal_date": "2026-01-10",
+                "asset": "AAPL",
+                "source": "stock",
+                "direction": "long",
+                "planned_entry": 100.0,
+                "stop": 95.0,
+                "target": 110.0,
+                "risk_pct": 0.01,
+                "r_planned": 2.0,
+                "status": "closed",
+                "fill_price": 100.5,
+                "fill_date": "2026-01-11",
+                "exit_date": exit_date,
+                "exit_price": 105.0,
+                "exit_reason": "target",
+                "qty": 200.0,
+                "fees": 10.0,
+                "slippage_cost": 1.0,
+                "pnl": pnl,
+                "r_realized": r,
+                "created_at": "2026-01-10 21:00:00",
+                "test_id": test_id,
+            }
+        )
+
+    def test_no_test_no_signal(self):
+        # GOU-02 : aucun signal sans test démarré (config figée)
+        with self.assertRaises(PaperEngineError):
+            self.eng.record_signal(
+                signal_date="2026-01-10",
+                asset="AAPL",
+                source="stock",
+                direction="long",
+                planned_entry=100.0,
+                stop=95.0,
+                target=110.0,
+                strategy_version=self.v,
+            )
+
+    def test_start_test_freezes_config_and_resets(self):
+        # GOU-02/AUD-04 : start_test fige la config en meta et remet le compteur à zéro
+        cfg1 = self.eng.start_test("test-A", self.v, risk_pct=0.02, initial_capital=50_000)
+        self.eng.record_signal(
+            signal_date="2026-01-10",
+            asset="AAPL",
+            source="stock",
+            direction="long",
+            planned_entry=100.0,
+            stop=95.0,
+            target=110.0,
+            strategy_version=self.v,
+        )
+        self.assertEqual(len(self.store.ptrade_list()), 1)
+        v2 = strategy_version("ma_cross", {"fast": 11})
+        cfg2 = self.eng.start_test("test-B", v2)  # nouvelle version = nouveau test
+        self.assertNotEqual(cfg1["test_id"], cfg2["test_id"])
+        self.assertEqual(self.store.ptrade_list(), [])  # compteur remis à zéro
+        self.assertAlmostEqual(self.eng.cash, 100_000)  # capital du nouveau test (défaut)
+        self.assertEqual(self.eng.active_test()["strategy_version"], v2)
+        # les signaux du nouveau test portent le nouveau test_id
+        t = self.eng.record_signal(
+            signal_date="2026-01-10",
+            asset="AAPL",
+            source="stock",
+            direction="long",
+            planned_entry=100.0,
+            stop=95.0,
+            target=110.0,
+            strategy_version=v2,
+        )
+        self.assertEqual(t["test_id"], cfg2["test_id"])
+
+    def test_cancel_signal_forbidden(self):
+        # GOU-03 : aucune annulation rétrospective
+        self.eng.start_test("t", self.v)
+        self.eng.record_signal(
+            signal_date="2026-01-10",
+            asset="AAPL",
+            source="stock",
+            direction="long",
+            planned_entry=100.0,
+            stop=95.0,
+            target=110.0,
+            strategy_version=self.v,
+        )
+        with self.assertRaises(PaperEngineError):
+            self.eng.cancel_signal("whatever")
+
+    def test_dashboard_scoped_to_current_test(self):
+        # GOU-02 : le dashboard ne compte que les trades du test en cours
+        cfg = self.eng.start_test("t", self.v)
+        self._closed_trade("old1", "autre-test", 1.0, 500.0)
+        self._closed_trade("new1", cfg["test_id"], 0.5, 250.0)
+        self._closed_trade("new2", cfg["test_id"], -0.5, -250.0)
+        d = self.eng.dashboard()
+        self.assertEqual(d["n_closed"], 2)  # pas l'ancien test
+        self.assertAlmostEqual(d["expectancy_r"], 0.0)
+        self.assertEqual(d["test"]["test_id"], cfg["test_id"])
+
+    def test_review_every_100_trades(self):
+        # GOU-04 : revue logguée à chaque palier de 100 trades clôturés
+        cfg = self.eng.start_test("t", self.v)
+        for i in range(100):
+            self._closed_trade(f"t{i}", cfg["test_id"], 0.2, 40.0, exit_date=f"2026-01-{(i % 27) + 1:02d}")
+        self.assertTrue(self.eng.check_review())  # palier 100 franchi -> revue logguée
+        self.assertFalse(self.eng.check_review())  # pas de double revue
+        runs = [r for r in self.store.list_runs(50) if r["kind"] == "paper_review"]
+        self.assertEqual(len(runs), 1)
+        # avant 100 trades : pas de revue
+        self.eng.start_test("t2", self.v)
+        self.assertFalse(self.eng.check_review())
+
+    def test_ideas_notebook_separate(self):
+        # GOU-01 : carnet d'idées séparé de la version en cours
+        self.eng.start_test("t", self.v)
+        self.eng.add_idea("tester un stop à 1,5x ATR (PAS appliqué au test en cours)")
+        self.eng.add_idea("filtrer les actifs peu volatils", strategy_version="rsi_reversion@aaaaaaaa")
+        ideas = self.eng.list_ideas()
+        self.assertEqual(len(ideas), 2)
+        self.assertTrue(all(e["kind"] == "idée" for e in ideas))
+        d = self.eng.dashboard()
+        self.assertEqual(d["n_ideas"], 2)
 
 
 if __name__ == "__main__":

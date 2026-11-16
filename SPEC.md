@@ -136,15 +136,17 @@ appliqués, résultat enregistré en **multiple de R** (R = gain/perte ÷ risque
   conclusion. Afficher l'intervalle de confiance de l'espérance (± 2·σ_R/√n) ; si l'IC
   contient 0, afficher « on ne sait rien ».
 
-### 3.7 Gouvernance du test — GOU (P6, à faire ; cadsup §4)
+### 3.7 Gouvernance du test — GOU (P6, **fait** : `PaperEngine.start_test/active_test/add_idea/cancel_signal/check_review`)
 
-- GOU-01 La stratégie testée en paper est **figée et versionnée** ; un carnet d'idées séparé
-  recueille les améliorations sans les appliquer à la version en cours.
+- GOU-01 La stratégie testée en paper est **figée et versionnée** (`strategy_version` =
+  hash des params) ; `record_signal` refuse toute autre version que celle du test en cours ;
+  carnet d'idées séparé (`add_idea`, journal kind='idée'). **fait**
 - GOU-02 Capital simulé, risque par trade (ex. 1 %) et modèle de coûts **fixés en début de
-  test** et inchangés ensuite.
-- GOU-03 **Aucun décrochage manuel** : pas d'annulation rétrospective de signal ; un conseil
-  absurde est loggué, « tradé » virtuellement et noté.
-- GOU-04 Revue à chaque palier de 100 trades clôturés.
+  test** (`start_test` écrit la config dans `meta`, réinitialise capital + échantillon ;
+  `dashboard` filtré par `test_id`). **fait**
+- GOU-03 **Aucun décrochage manuel** : `cancel_signal()` lève une erreur par design. **fait**
+- GOU-04 Revue à chaque palier de 100 trades clôturés (`check_review` loggue `paper_review`
+  dans l'historique des runs). **fait**
 
 ### 3.8 Qualité & distribution — QUA (P0/P5, fait)
 - QUA-01 mypy `--strict` sur le cœur (backtest, strategies, screener) ; lint ruff ; pre-commit. **fait**
@@ -198,3 +200,4 @@ notionnel ne sont pas réunis.
 | 1.1.0 | 2026-11-15 | Restructuration en SPEC global (IDs stables, statuts, priorités) ; `cadsup.md` intégré en §3.5–§3.8 et supprimé. |
 | 1.1.1 | 2026-11-15 | AUD-01 (look-ahead) et AUD-03 (cherry-picking) faits : `tests/test_antibias.py` ; correction du leak look-ahead dans `ml_signal`. |
 | 1.2.0 | 2026-11-16 | P6.1 fait : moteur paper conforme (PAP-01…08) — `paper_engine.py`, table `paper_trades`, dashboard + benchmark B&H, GUI. |
+| 1.3.0 | 2026-11-16 | P6.2 fait : gouvernance (GOU-01…04) — `start_test` (config figée, test_id), version verrouillée, carnet d'idées, `cancel_signal` interdit, revue/100 trades. |

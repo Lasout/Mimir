@@ -92,7 +92,8 @@ CREATE TABLE IF NOT EXISTS paper_trades (
     r_planned        REAL,
     r_realized       REAL,                    -- null tant que ouvert
     status           TEXT NOT NULL DEFAULT 'pending',  -- pending | open | closed
-    created_at       TEXT NOT NULL            -- horloge réelle (PAP-05)
+    created_at       TEXT NOT NULL,           -- horloge réelle (PAP-05)
+    test_id          TEXT                     -- test en cours (GOU-02 : config figée par test)
 );
 CREATE INDEX IF NOT EXISTS idx_paper_trades_status ON paper_trades (status);
 CREATE TABLE IF NOT EXISTS journal (
@@ -489,6 +490,7 @@ class Store:
         "r_realized",
         "status",
         "created_at",
+        "test_id",
     )
 
     def ptrade_add(self, trade: dict) -> int:
