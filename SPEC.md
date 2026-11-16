@@ -179,7 +179,7 @@ appliqués, résultat enregistré en **multiple de R** (R = gain/perte ÷ risque
 - NF-04 Calcul GPU optionnel (`auto`/`cpu`/`cuda`), repli CPU automatique.
 - NF-05 Aucun ordre réel sans validation explicite (voir GNG-xx).
 
-## 5. Critères de décision go/no-go pour le capital réel — GNG (P6, à faire ; cadsup §5)
+## 5. Critères de décision go/no-go pour le capital réel — GNG (P6, **fait** : `tradehelper/gonogo.py` + `PaperEngine.gonogo()` + panneau GUI + chaînage `IBKRBroker`)
 
 Tous les critères doivent être remplis **simultanément** ; un seul manquant = on continue
 le paper trading.
@@ -196,6 +196,11 @@ le paper trading.
 Le déblocage du broker réel (IBKR) reste verrouillé tant que la grille GNG n'est pas verte
 **et** que `TRADEHELPER_ALLOW_LIVE_TRADING=1` + confirmation manuelle + plafond de
 notionnel ne sont pas réunis.
+**Statut : fait (P6.4)** — `evaluate_gonogo` (fonction pure, seuils ci-dessus, `go` =
+6/6 critères) ; `PaperEngine.gonogo()` assemble dashboard (GNG-01…04) + benchmark B&H
+(GNG-05) + régimes détectés sur les actifs tradés pendant le test (GNG-06) ; panneau GUI
+onglet Paper ; `broker.check_gonogo` bloque tout ordre réel IBKR si grille rouge
+(`IBKRBroker(gonogo=engine.gonogo)`). Tests `tests/test_gonogo.py`.
 
 ## 6. Références
 
@@ -215,3 +220,4 @@ notionnel ne sont pas réunis.
 | 1.2.0 | 2026-11-16 | P6.1 fait : moteur paper conforme (PAP-01…08) — `paper_engine.py`, table `paper_trades`, dashboard + benchmark B&H, GUI. |
 | 1.3.0 | 2026-11-16 | P6.2 fait : gouvernance (GOU-01…04) — `start_test` (config figée, test_id), version verrouillée, carnet d'idées, `cancel_signal` interdit, revue/100 trades. |
 | 1.4.0 | 2026-11-16 | P6.3 fait : AUD-02 (survivorship), AUD-04 (warning overfitting `grid_search`), AUD-05 (régime — `regime.py`, colonne screener + couverture GUI), AUD-06 (significativité — `dashboard()` : `min_trades_ok`, `significance_ok`, `conclusion`). |
+| 1.5.0 | 2026-11-16 | P6.4 fait : grille go/no-go GNG-01…06 (`gonogo.py` + `PaperEngine.gonogo()` + panneau GUI onglet Paper) ; chaînage broker — ordre réel IBKR refusé si grille rouge (`broker.check_gonogo`). |

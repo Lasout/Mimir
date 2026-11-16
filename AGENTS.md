@@ -87,10 +87,16 @@ tradehelper/
 │                             #   J+1 + slippage (jamais au prix du signal), stop prioritaire,
 │                             #   R-multiples nets de frais/slippage, CostModel (frais AR >= 0,1 %,
 │                             #   slippage contre la position), dashboard + benchmark B&H ;
-│                             #   table `paper_trades` (schéma PAP-07), horloge réelle
+│                             #   table `paper_trades` (schéma PAP-07), horloge réelle ;
+│                             #   gonogo() = grille go/no-go SPEC §5 (GNG-01…06)
+├── gonogo.py                 # P6.4 (SPEC §5, GNG-xx) : evaluate_gonogo (fonction pure, 6 critères
+│                             #   simultanés, go = 6/6) — seuils : >=100 trades, espérance > +0,15 R
+│                             #   IC exclut 0, payoff >= 1,5 ou win >= 45 %, max DD <= 25 %,
+│                             #   perf > B&H, >= 2 régimes
 ├── broker.py                 # brokers (P3) : PaperBroker (refuse dry_run=False) + IBKRBroker
 │                             #   verrouillé (env TRADEHELPER_ALLOW_LIVE_TRADING=1 + config +
-│                             #   confirmation + plafond max_order_notional) — aucun ordre réel
+│                             #   confirmation + plafond max_order_notional + grille GNG verte
+│                             #   via check_gonogo si gonogo= fourni) — aucun ordre réel
 │                             #   sans validation explicite
 └── gui/
     ├── app.py                # Tkinter : 1 barre d'instrument GLOBALE partagée par les 5 onglets
@@ -132,7 +138,9 @@ tests/                        # unittest, données synthétiques (tests/helpers.
 6. Avertissement « outil éducatif, pas un conseil en investissement » à maintenir (README).
 7. **Jamais d'ordres réels sans validation explicite** : le broker par défaut est `paper`
    (`broker.py`) ; `IBKRBroker` exige `TRADEHELPER_ALLOW_LIVE_TRADING=1` + config complète +
-   `confirm=True` + notionnel ≤ `max_order_notional`.
+   `confirm=True` + notionnel ≤ `max_order_notional` + (si `gonogo=` fourni, ex.
+   `IBKRBroker(gonogo=engine.gonogo)`) la grille go/no-go GNG verte au moment de l'ordre
+   (`check_gonogo`, SPEC §5).
 
 ## Commandes
 

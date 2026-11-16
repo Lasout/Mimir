@@ -247,13 +247,21 @@ Légende : **(déjà en place)** = existe, à consolider ; le reste est à const
 
 ### P6.4 — Grille go/no-go capital réel SPEC §5 (GNG-xx)
 
-- [ ] Page/panneau « go/no-go » calculant les 6 critères **simultanément** : ≥ 100 trades
-      clôturés ; espérance nette > +0,15 R avec IC excluant 0 ; payoff ≥ 1,5 ou win rate
-      ≥ 45 % (avec espérance positive) ; max DD ≤ 20–25 % ; perf nette > buy-and-hold des
-      mêmes actifs ; échantillon ≥ 2 régimes. Un seul manquant = « on continue le paper ».
-- [ ] Le déblocage du broker réel (IBKR) reste verrouillé tant que la grille n'est pas
-      verte **et** que `TRADEHELPER_ALLOW_LIVE_TRADING=1` + confirmation + plafond
-      ne sont pas réunis (garde-fous existants, à chaîner avec la grille)
+- [x] Panneau « go/no-go » calculant les 6 critères **simultanément** — fait :
+      `tradehelper/gonogo.py` (`evaluate_gonogo`, fonction pure avec seuils SPEC §5 :
+      ≥ 100 trades clôturés ; espérance nette > +0,15 R avec IC95 excluant 0 ; payoff
+      ≥ 1,5 ou win rate ≥ 45 % avec espérance positive ; max DD ≤ 25 % ; perf nette >
+      buy-and-hold des mêmes actifs même période ; ≥ 2 régimes) + `PaperEngine.gonogo()`
+      (assemble dashboard + benchmark B&H + régimes détectés sur les actifs tradés) +
+      panneau GUI dans l'onglet Paper (bouton « Grille go/no-go », arbre des 6 critères
+      OK/KO + verdict GO/NO-GO). Un seul manquant = « on continue le paper ».
+      Tests : `tests/test_gonogo.py` (14 tests : seuils bornés de chaque critère, verdict,
+      chaînage broker, grille moteur verte/rouge).
+- [x] Chaînage broker — fait : `IBKRBroker` accepte `gonogo` (callable, ex.
+      `engine.gonogo`) et `check_gonogo()` refuse tout ordre RÉEL si la grille n'est pas
+      verte, en plus des garde-fous existants (`TRADEHELPER_ALLOW_LIVE_TRADING=1` +
+      config IBKR + `ib_insync` + `confirm=True` + plafond de notionnel). Le dry-run
+      reste possible grille rouge.
 
 ### Ordre de réalisation proposé
 

@@ -20,6 +20,20 @@ class BrokerError(Exception):
     pass
 
 
+def check_gonogo(gonogo: dict | None) -> None:
+    """GNG (SPEC §5, P6.4) : lève BrokerError si la grille go/no-go n'est pas verte.
+
+    Un ordre RÉEL n'est possible que si les 6 critères GNG sont remplis simultanément
+    (voir `gonogo.evaluate_gonogo` / `PaperEngine.gonogo`)."""
+    if gonogo is None:
+        return
+    if not gonogo.get("go"):
+        missing = ", ".join(gonogo.get("missing") or []) or "?"
+        raise BrokerError(
+            f"Ordre live refusé : grille go/no-go NO-GO (critères manquants : {missing}) — continuer le paper trading."
+        )
+
+
 class Broker:
     name = "broker"
 
@@ -103,11 +117,13 @@ class PaperBroker(Broker):
 class IBKRBroker(Broker):
     """IBKR réel — verrouillé. Refuse toute exécution sans :
     TRADEHELPER_ALLOW_LIVE_TRADING=1, config IBKR (host/port/client_id),
-    ib_insync installé, confirm=True ET notionnel <= max_order_notional."""
+    ib_insync installé, confirm=True, notionnel <= max_order_notional
+    ET — si `gonogo` est fourni (callable -> dict, ex. `PaperEngine.gonogo`) —
+    la grille go/no-go GNG verte (SPEC §5) au moment de l'ordre."""
 
     name = "ibkr"
 
-    def __init__(self, cfg: dict | None = None, max_order_notional: float = 1_000.0):
+    def __init__(self, cfg: dict | None = None, max_order_notional: float = 1_000.0, gonogo=None):
         from .config import load_config
 
         cfg = cfg or load_config()
@@ -126,6 +142,7 @@ class IBKRBroker(Broker):
         except ImportError as exc:
             raise BrokerError("ib_insync non installé — IBKR indisponible, utiliser le paper.") from exc
         self._ib = None  # connexion établie paresseusement dans connect()
+        self._gonogo = gonogo  # callable () -> dict | None : grille GNG (SPEC §5)
 
     def connect(self):
         if self._ib is None:
@@ -151,6 +168,8 @@ class IBKRBroker(Broker):
             raise BrokerError("Ordre live refusé : confirmation explicite requise (confirm=True).")
         if notional > self.max_order_notional:
             raise BrokerError(f"Ordre refusé : notionnel {notional:.2f} > plafond {self.max_order_notional:.2f}.")
+        if not dry_run and self._gonogo is not None:
+            check_gonogo(self._gonogo())  # GNG : grille go/no-go doit être verte pour un ordre réel
         if dry_run:
             return {
                 "broker": self.name,
@@ -181,11 +200,14 @@ class IBKRBroker(Broker):
         return f"IBKR live (plafond {self.max_order_notional:g} €/ordre, confirmation requise)"
 
 
-def get_broker(name: str, pf: PaperPortfolio | None = None, cfg: dict | None = None) -> Broker:
-    """Fabrique un broker. 'paper' par défaut ; 'ibkr' lève BrokerError si verrouillé."""
+def get_broker(name: str, pf: PaperPortfolio | None = None, cfg: dict | None = None, gonogo=None) -> Broker:
+    """Fabrique un broker. 'paper' par défaut ; 'ibkr' lève BrokerError si verrouillé.
+
+    `gonogo` : callable () -> dict (ex. `PaperEngine.gonogo`) passé à IBKRBroker —
+    un ordre réel exige la grille GNG verte (SPEC §5)."""
     name = (name or "paper").lower()
     if name == "paper":
         return PaperBroker(pf or PaperPortfolio())
     if name == "ibkr":
-        return IBKRBroker(cfg=cfg)
+        return IBKRBroker(cfg=cfg, gonogo=gonogo)
     raise BrokerError(f"broker inconnu: {name} (dispo: paper, ibkr)")

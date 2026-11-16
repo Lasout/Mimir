@@ -16,6 +16,13 @@ Licence : [MIT](LICENSE) — réutilisation/fork libres avec citation de l'origi
   couverture des régimes dans le statut GUI), AUD-06 significativité (`dashboard()` :
   `min_trades_ok`, `significance_ok`, `conclusion` — « on ne sait rien » si n < 100 ou IC
   contient 0, affiché dans le dashboard GUI).
+- P6.4 (grille go/no-go capital réel, SPEC §5 GNG-01…06) : `tradehelper/gonogo.py`
+  (`evaluate_gonogo` — 6 critères simultanés : ≥ 100 trades, espérance > +0,15 R avec IC95
+  excluant 0, payoff ≥ 1,5 ou win rate ≥ 45 %, max DD ≤ 25 %, perf nette > B&H mêmes
+  actifs, ≥ 2 régimes) + `PaperEngine.gonogo()` + panneau GUI dans l'onglet Paper
+  (arbre des 6 critères OK/KO + verdict GO/NO-GO). Chaînage broker : `IBKRBroker(gonogo=...)`
+  refuse tout ordre réel si la grille n'est pas verte (`check_gonogo`), en plus des
+  garde-fous existants.
 
 ## [0.1.0] — 2026-11-15
 

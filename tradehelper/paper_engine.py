@@ -31,6 +31,8 @@ from dataclasses import dataclass
 import pandas as pd
 
 from .data.store import Store
+from .gonogo import evaluate_gonogo
+from .regime import detect_regime
 from .timeutil import utcnow_naive
 
 MIN_FEE_RT_PCT = 0.001  # PAP-06 : plancher non négociable, 0,1 % aller-retour
@@ -513,3 +515,35 @@ class PaperEngine:
         if not rets:
             return None
         return {"window": [first, last], "n_assets": len(rets), "mean_return": sum(rets) / len(rets), "per_asset": rets}
+
+    # ------------------------------------------------------------- 5) grille go/no-go (GNG, SPEC §5)
+    def gonogo(self, test_id: str | None = None) -> dict:
+        """Grille go/no-go capital réel (P6.4, SPEC §5 GNG-01…06) : les 6 critères évalués
+        simultanément sur le test en cours — dashboard (GNG-01…04), benchmark B&H des mêmes
+        actifs sur la même fenêtre (GNG-05) et régimes de marché détectés sur chaque actif
+        tradé pendant la fenêtre du test (GNG-06, AUD-05). Un seul critère manquant = NO-GO."""
+        d = self.dashboard(test_id=test_id)
+        bh = self.benchmark_buy_hold()
+        cfg = d["test"] or {}
+        tid = test_id or cfg.get("test_id")
+        closed = [t for t in self.store.ptrade_list(status="closed") if tid is None or t["test_id"] == tid]
+        # régimes des actifs tradés sur la fenêtre du test (données du store, aucun futur)
+        labels: list[str] = []
+        if closed:
+            first = min(t["fill_date"] for t in closed if t["fill_date"])
+            last = max(t["exit_date"] for t in closed if t["exit_date"])
+            for asset, source in sorted({(t["asset"], t["source"]) for t in closed}):
+                df = self.store.read(source, asset, interval="1d", start=pd.Timestamp(first), end=pd.Timestamp(last))
+                if df is not None and len(df) >= 20:
+                    labels.append(detect_regime(df)["label"])
+        return evaluate_gonogo(
+            n_closed=d["n_closed"],
+            expectancy_r=d["expectancy_r"],
+            expectancy_ic95=d["expectancy_ic95"],
+            win_rate=d["win_rate"],
+            payoff=d["payoff"],
+            max_drawdown_pct=d["max_drawdown_pct"],
+            total_return=d["total_return"],
+            benchmark_return=bh["mean_return"] if bh else None,
+            regime_labels=labels,
+        )

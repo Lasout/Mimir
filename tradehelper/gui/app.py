@@ -1390,12 +1390,22 @@ class TradeHelperApp:
             ("engine_record", self._engine_record_signal),
             ("engine_next", self._engine_next_day),
             ("engine_dash", self._engine_dashboard),
+            ("engine_gonogo", self._engine_gonogo),
         ):
             b = ttk.Button(ebtns, command=cmd)
             self._set_text(b, key)
             b.pack(side="left", padx=4)
         self.engine_metrics_var = tk.StringVar(value="")
         ttk.Label(eframe, textvariable=self.engine_metrics_var, style="Status.TLabel").pack(anchor="w", padx=6)
+        # grille go/no-go capital réel (SPEC §5, GNG-01…06)
+        self.gonogo_var = tk.StringVar(value="")
+        ttk.Label(eframe, textvariable=self.gonogo_var, style="Status.TLabel").pack(anchor="w", padx=6)
+        gcols = ("critère", "ok", "détail")
+        self.gonogo_tree = ttk.Treeview(eframe, columns=gcols, show="headings", height=6)
+        for c, w in zip(gcols, (420, 40, 420), strict=True):
+            self.gonogo_tree.heading(c, text=c)
+            self.gonogo_tree.column(c, width=w)
+        self.gonogo_tree.pack(fill="both", expand=False, padx=6, pady=2)
         ecols = ("trade_id", "actif", "version", "signal", "fill", "sortie", "R_prev", "R_net", "raison")
         self.engine_tree = ttk.Treeview(eframe, columns=ecols, show="headings", height=6)
         for c, w in zip(ecols, (90, 70, 130, 90, 90, 90, 60, 60, 140), strict=True):
@@ -1750,6 +1760,29 @@ class TradeHelperApp:
             )
         self.engine_metrics_var.set("   |   ".join(parts))
         self._engine_refresh()
+
+    def _engine_gonogo(self):
+        """Évalue la grille go/no-go (SPEC §5 GNG-01…06) sur le test en cours."""
+        if self.engine is None:
+            return
+
+        def work():
+            return self.engine.gonogo()
+
+        def done(result, err):
+            if err is not None:
+                self.gonogo_var.set(f"Erreur : {err}")
+                return
+            for i in self.gonogo_tree.get_children():
+                self.gonogo_tree.delete(i)
+            for c in result["criteria"]:
+                self.gonogo_tree.insert(
+                    "", "end", values=(f"{c['id']} — {c['label']}", "OK" if c["ok"] else "KO", c["detail"])
+                )
+            prefix = t("gonogo_go", self.lang) if result["go"] else t("gonogo_nogo", self.lang)
+            self.gonogo_var.set(f"{prefix} ({result['n_ok']}/{result['n_total']}) — {result['verdict']}")
+
+        self._run_async(work, done)
 
     def _engine_refresh(self):
         if self.engine is None:
